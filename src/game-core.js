@@ -30,6 +30,7 @@ export function discard(game, index) {
   const hand = game.hands[game.current];
   if (hand.length !== 14 || index < 0 || index >= hand.length) throw new Error('无效的切牌');
   const [tile] = hand.splice(index, 1);
+  hand.sort((a, b) => a - b);
   game.rivers[game.current].push(tile);
   game.current = (game.current + 1) % 4;
   game.drawn = null;

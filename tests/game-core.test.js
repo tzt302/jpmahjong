@@ -20,6 +20,13 @@ test('discard advances turn and draws for next player', () => {
   assert.equal(game.wall.length, before - 1);
 });
 
+test('discard automatically sorts the remaining hand before the next draw', () => {
+  const game = createGame(() => 0.41);
+  discard(game, 0);
+  const remaining = game.hands[0];
+  assert.deepEqual(remaining, [...remaining].sort((a, b) => a - b));
+});
+
 test('valid completed hand can declare tsumo', () => {
   const game = createGame(() => 0.75);
   game.hands[0] = [0,1,2,3,4,5,9,10,11,18,19,20,27,27];
