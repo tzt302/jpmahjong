@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#eee6d5">
+  <meta name="description" content="JP MAHJONG：无 AI、和纸牌谱风格的日本立直麻将与何切练习网站。">
+  <title>JP MAHJONG · 日本麻将</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="paper-noise" aria-hidden="true"></div>
+  <header class="site-header">
+    <a class="brand" href="#home" data-route="home" aria-label="JP MAHJONG 首页">
+      <span class="brand-seal">雀</span>
+      <span><strong>JP MAHJONG</strong><small>日本麻将 · 和纸牌谱</small></span>
+    </a>
+    <nav aria-label="主导航">
+      <button class="nav-link active" data-route="home">首页</button>
+      <button class="nav-link" data-route="table">牌桌</button>
+      <button class="nav-link" data-route="quiz">何切馆</button>
+    </nav>
+    <span class="version">FIRST EDITION · 0.1</span>
+  </header>
+
+  <main>
+    <section id="homeView" class="view home-view">
+      <div class="hero-copy">
+        <p class="kicker">打牌，也读牌</p>
+        <h1>一张安静的<br><em>日本麻将牌桌</em></h1>
+        <p class="lede">没有 AI 提示，没有花哨特效。四位玩家围坐同一台设备轮替出牌，或独自完成每日何切。</p>
+        <div class="hero-actions">
+          <button class="primary" data-route="table">开始四人轮替局 <span>→</span></button>
+          <button class="secondary" data-route="quiz">今日何切</button>
+        </div>
+        <p class="edition-note">第一版 · 四人同屏轮替 / 自摸判定 / 每日一题 / 闯关进度</p>
+      </div>
+      <div class="hero-table" aria-hidden="true">
+        <div class="ink-circle"></div>
+        <span class="wind north">北</span><span class="wind east">東</span><span class="wind south">南</span><span class="wind west">西</span>
+        <div class="hero-center"><small>東一局</small><b>局</b><span>余 83</span></div>
+        <div class="sample-river river-a">一萬　九筒　北　五索</div>
+        <div class="sample-river river-b">發　八萬　三筒　東</div>
+      </div>
+    </section>
+
+    <section id="tableView" class="view table-view hidden">
+      <aside id="tableSidebar" class="table-sidebar collapsed">
+        <button id="sidebarToggle" class="sidebar-toggle" aria-label="展开牌局信息" aria-expanded="false">›</button>
+        <div class="sidebar-rail">
+          <span class="mini-seal">雀</span>
+          <button class="rail-icon active" title="牌局">局</button>
+          <button class="rail-icon" data-route="quiz" title="何切馆">切</button>
+          <button class="rail-icon" data-route="home" title="首页">門</button>
+        </div>
+        <div class="sidebar-content">
+          <p class="kicker">牌局记录</p>
+          <h2>東一局</h2>
+          <ol id="seatList" class="seat-list"></ol>
+          <div class="rule-note"><strong>首版规则</strong><span>四人轮替 · 无电脑玩家<br>自摸判定 · 牌山流局</span></div>
+          <button id="restartButton" class="text-button">重新开局</button>
+        </div>
+      </aside>
+
+      <div class="game-stage">
+        <div class="stage-meta"><span id="roundText">東一局</span><span id="wallText">牌山 83</span></div>
+        <div class="mahjong-table">
+          <div class="felt-grain"></div>
+          <div class="seat-marker marker-top">北家</div>
+          <div class="seat-marker marker-left">西家</div>
+          <div class="seat-marker marker-right">南家</div>
+          <div class="seat-marker marker-bottom">東家</div>
+          <div class="table-center"><b>東</b><span>一局</span><small id="centerWall">83</small></div>
+          <div id="river0" class="river river-bottom"></div>
+          <div id="river1" class="river river-right"></div>
+          <div id="river2" class="river river-top"></div>
+          <div id="river3" class="river river-left"></div>
+        </div>
+        <section class="hand-dock">
+          <div class="turn-line"><span id="turnSeal">東</span><div><small>手番</small><strong id="turnName">東家</strong></div><p id="turnMessage">选择一张牌打出</p></div>
+          <div id="hand" class="hand" aria-label="当前玩家手牌"></div>
+          <div class="hand-actions">
+            <button id="tsumoButton" class="action-button win hidden">自摸</button>
+            <button id="sortButton" class="action-button">理牌</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="quizView" class="view quiz-view hidden">
+      <header class="page-heading">
+        <div><p class="kicker">何切馆</p><h1>今天，你会切哪一张？</h1></div>
+        <div class="streak-card"><small>连续答题</small><strong id="streakValue">0 日</strong></div>
+      </header>
+      <div class="quiz-layout">
+        <article class="quiz-card">
+          <div class="quiz-meta"><span id="quizBadge">每日一题</span><span id="quizProgress">第 1 / 5 题</span></div>
+          <div class="situation"><span id="quizRound">東一局 · 南家 · 6巡目</span><span id="quizDora">宝牌表示：四筒</span></div>
+          <div id="quizHand" class="quiz-hand" aria-label="何切手牌"></div>
+          <p class="quiz-prompt">请选择你认为最合适的切牌</p>
+          <div id="quizOptions" class="quiz-options"></div>
+          <div id="quizResult" class="quiz-result hidden" aria-live="polite"></div>
+          <button id="nextQuestion" class="primary hidden">下一题 <span>→</span></button>
+        </article>
+        <aside class="chapter-card">
+          <p class="kicker">牌效入门 · 第一章</p>
+          <h2>保留好形</h2>
+          <p>完成 5 道人工编排题，认识两面、嵌张与孤张的取舍。</p>
+          <div class="progress-track"><i id="chapterProgress"></i></div>
+          <strong id="chapterScore">0 / 5 完成</strong>
+          <ul><li>答案由固定规则和人工解析给出</li><li>不使用生成式 AI</li><li>进度仅保存在当前浏览器</li></ul>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <div id="handoff" class="handoff hidden" role="dialog" aria-modal="true">
+    <div class="handoff-card">
+      <span id="handoffSeal">南</span><p>请把设备交给</p><h2 id="handoffName">南家</h2>
+      <small>其他玩家请移开视线</small>
+      <button id="revealButton" class="primary">查看手牌</button>
+    </div>
+  </div>
+
+  <div id="resultModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="result-card"><span class="result-seal">和</span><p id="resultEyebrow">本局结束</p><h2 id="resultTitle">東家 自摸</h2><p id="resultCopy"></p><button id="newRoundButton" class="primary">再开一局</button></div>
+  </div>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
