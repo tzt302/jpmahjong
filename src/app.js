@@ -93,6 +93,7 @@ async function animateAiDiscard(player, tile) {
 }
 
 function route(name) {
+  document.body.dataset.view = name;
   $$('.view').forEach(view => view.classList.add('hidden'));
   $(`#${name}View`).classList.remove('hidden');
   $$('.nav-link').forEach(link => link.classList.toggle('active', link.dataset.route === name));
@@ -118,6 +119,7 @@ function renderGame() {
   $('#centerWall').textContent = game.wall.length;
   const humanTurn = game.current === 0;
   $('#turnSeal').textContent = WINDS[game.current];
+  $('#turnLabel').textContent = humanTurn ? 'YOUR SEAT' : 'OPPONENT TURN';
   $('#turnName').textContent = humanTurn ? '你 · 東家' : `AI · ${WINDS[game.current]}家`;
   $('#turnMessage').textContent = game.phase === 'draw' ? '牌山已尽' : humanTurn ? '选择一张牌打出' : '电脑雀士正在思考…';
   $('#seatList').innerHTML = WINDS.map((wind, i) => `<li class="${i === game.current ? 'current' : ''}"><b>${i === 0 ? '你' : `AI ${wind}家`}</b><span>${game.rivers[i].length} 枚切牌</span></li>`).join('');

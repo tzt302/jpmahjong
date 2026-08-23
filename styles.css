@@ -202,6 +202,248 @@ nav { display: flex; gap: 5px; }
   .site-header { height: 66px; padding: 0 14px; }.brand small { display: none; }.brand-seal { width: 34px; height: 34px; }.brand strong { font-size: 12px; }nav { margin-left: auto; }.nav-link { padding: 8px; font-size: 12px; }.view { min-height: calc(100vh - 66px); }.hero-copy h1 { font-size: 41px; }.hero-actions { flex-direction: column; }.hero-table { width: 88vw; border-width: 13px; }.game-stage { padding: 10px 6px 10px 54px; }.mahjong-table { width: calc(100vw - 66px); border-width: 9px; transform: perspective(1000px) rotateX(29deg); }.table-sidebar { height: calc(100vh - 66px); }.table-sidebar.collapsed { width: 48px; }.sidebar-rail { width: 48px; }.sidebar-toggle { right: -14px; }.hand-dock { padding: 0 4px; }.tile { width: clamp(21px, 5.4vw, 35px); padding: 1px; box-shadow: 1px 3px 0 #c7baa1; }.tile.drawn { margin-left: 3px; }.turn-line p { display: none; }.hand-actions { position: static; justify-content: center; margin-top: 9px; }.quiz-view { padding: 32px 15px; }.page-heading { align-items: start; }.streak-card { display: none; }.quiz-card { padding: 18px 10px; }.situation { flex-direction: column; gap: 5px; }.quiz-hand { justify-content: start; padding: 18px 4px; }.quiz-options button { min-width: 82px; padding: 10px 7px; }.handoff-card,.result-card { padding: 35px 24px; }
 }
 
+/* v0.5 — full-screen match room and tactile washi table */
+body[data-view="table"] { overflow: hidden; background: #d8d0c0; }
+body[data-view="table"] .site-header { display: none; }
+body[data-view="table"] .paper-noise { opacity: .07; }
+body[data-view="table"] .table-view { min-height: 100vh; height: 100vh; }
+
+body[data-view="table"] .table-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  height: 100vh;
+  width: 272px;
+  z-index: 30;
+  background: rgba(242, 237, 226, .97);
+  border-right: 1px solid rgba(39, 48, 43, .18);
+  box-shadow: 14px 0 35px rgba(35, 39, 34, .10);
+  backdrop-filter: blur(16px);
+}
+body[data-view="table"] .table-sidebar.collapsed { width: 68px; box-shadow: 5px 0 20px rgba(35,39,34,.06); }
+body[data-view="table"] .sidebar-rail { padding-top: 20px; background: rgba(255,255,255,.16); }
+body[data-view="table"] .sidebar-toggle {
+  right: -17px;
+  top: calc(50% - 28px);
+  width: 34px;
+  height: 58px;
+  border-radius: 0 18px 18px 0;
+  border-left: 0;
+  color: #7d2f24;
+  background: #eee8dc;
+  box-shadow: 5px 4px 12px rgba(40,42,36,.12);
+}
+
+body[data-view="table"] .game-stage {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 12px 28px 14px 88px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 52% 44%, rgba(255,255,255,.56) 0, rgba(255,255,255,.13) 43%, transparent 68%),
+    linear-gradient(135deg, #e8e2d6 0%, #d9d1c2 100%);
+}
+body[data-view="table"] .game-stage::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: .28;
+  background-image: repeating-linear-gradient(92deg, rgba(73,64,49,.035) 0 1px, transparent 1px 6px);
+}
+body[data-view="table"] .stage-meta {
+  visibility: visible;
+  width: min(78vw, 1060px);
+  height: auto;
+  margin: 0;
+  color: #5c625d;
+  font-family: system-ui, sans-serif;
+  font-size: 10px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+body[data-view="table"] .stage-meta span:first-child::before { content: "RANKED MATCH  /  "; color: #9a392c; }
+
+body[data-view="table"] .table-scene {
+  width: min(76vw, calc((100vh - 255px) * 1.72), 1080px);
+  margin: 50px auto 0;
+  align-self: center;
+}
+body[data-view="table"] .mahjong-table {
+  width: 100%;
+  aspect-ratio: 1.64;
+  border: 12px solid #203a43;
+  outline: 1px solid #817969;
+  border-radius: 18px;
+  background: #d9d0bd;
+  transform: perspective(1450px) rotateX(18deg);
+  transform-origin: center 70%;
+  box-shadow:
+    0 7px 0 #132d36,
+    0 12px 0 #a49a86,
+    0 31px 35px rgba(36,39,32,.31),
+    inset 0 0 0 2px rgba(255,255,255,.67),
+    inset 0 0 48px rgba(87,73,51,.12);
+}
+body[data-view="table"] .mahjong-table::before {
+  content: "";
+  position: absolute;
+  inset: 18px;
+  border: 1px solid rgba(41,59,57,.17);
+  border-radius: 8px;
+  box-shadow: inset 0 0 28px rgba(74,67,52,.08);
+  pointer-events: none;
+}
+body[data-view="table"] .mahjong-table .felt-grain {
+  opacity: 1;
+  background:
+    radial-gradient(circle at center, transparent 0 20%, rgba(34,61,63,.07) 20.2% 20.5%, transparent 20.7% 30%, rgba(34,61,63,.045) 30.2% 30.5%, transparent 30.7%),
+    repeating-linear-gradient(47deg, rgba(79,66,43,.026) 0 1px, transparent 1px 8px),
+    repeating-linear-gradient(-43deg, rgba(255,255,255,.16) 0 1px, transparent 1px 11px);
+}
+
+body[data-view="table"] .player-plaque {
+  min-width: 254px;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid rgba(57,55,46,.30);
+  border-radius: 3px;
+  background: rgba(239,233,219,.96);
+  box-shadow: 0 3px 0 rgba(83,75,59,.12), 0 9px 18px rgba(49,48,40,.10);
+  font-size: 12px;
+}
+body[data-view="table"] .player-plaque b { border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+body[data-view="table"] .player-plaque strong { font-family: Georgia, serif; letter-spacing: .03em; }
+body[data-view="table"] .plaque-top { top: -50px; }
+body[data-view="table"] .plaque-left { left: -147px; }
+body[data-view="table"] .plaque-right { right: -147px; }
+
+body[data-view="table"] .tile-wall { filter: drop-shadow(2px 5px 3px rgba(25,35,34,.31)); }
+body[data-view="table"] .wall-tile {
+  width: clamp(18px, 1.63vw, 25px);
+  height: clamp(34px, 2.75vw, 43px);
+  border-color: rgba(15,34,43,.83);
+  border-radius: 4px 4px 3px 3px;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.10), transparent 18% 80%, rgba(0,0,0,.12)),
+    repeating-linear-gradient(45deg, rgba(255,255,255,.032) 0 2px, transparent 2px 6px),
+    #183745;
+  box-shadow: inset 0 2px 0 rgba(235,229,212,.20), inset 0 -3px 0 rgba(8,22,29,.22);
+}
+body[data-view="table"] .wall-top { top: 5%; left: 29%; }
+body[data-view="table"] .wall-left { left: -10.2%; top: 46%; }
+body[data-view="table"] .wall-right { right: -10.2%; top: 46%; }
+
+body[data-view="table"] .mahjong-table .table-center {
+  left: 42%; top: 34%; width: 16%;
+  padding: 10px;
+  background: linear-gradient(145deg, #1e414b, #142e38);
+  border: 1px solid rgba(239,231,213,.45);
+  outline: 4px double rgba(31,58,64,.28);
+  clip-path: polygon(24% 0,76% 0,100% 24%,100% 76%,76% 100%,24% 100%,0 76%,0 24%);
+  box-shadow: 0 8px 12px rgba(27,39,38,.24);
+}
+body[data-view="table"] .mahjong-table .table-center b { font-size: clamp(18px, 1.7vw, 25px); letter-spacing: .12em; }
+body[data-view="table"] .mahjong-table .table-center small { font-family: system-ui, sans-serif; }
+body[data-view="table"] .mahjong-table .seat-marker { box-shadow: 0 4px 6px rgba(25,38,37,.24), inset 0 0 0 1px rgba(255,255,255,.18); }
+
+body[data-view="table"] .dora-box {
+  left: 61%; top: 55%;
+  padding: 5px 7px 7px;
+  border-radius: 3px;
+  background: rgba(236,229,214,.78);
+  box-shadow: 0 3px 7px rgba(58,53,43,.10);
+}
+body[data-view="table"] .dora-box > div { width: 31px; height: 43px; border-radius: 3px; }
+
+body[data-view="table"] .mahjong-table .river { gap: 3px; }
+body[data-view="table"] .mahjong-table .river-tile {
+  width: clamp(20px, 2.1vw, 30px);
+  height: clamp(28px, 2.9vw, 41px);
+  padding: 1px;
+  border: 1px solid rgba(73,67,53,.22);
+  background: #eee8da;
+  box-shadow: 1px 3px 0 #b8ad97, 2px 4px 5px rgba(39,43,35,.15);
+}
+body[data-view="table"] .mahjong-table .river { grid-template-columns: repeat(6, clamp(20px, 2.1vw, 30px)); grid-auto-rows: clamp(28px, 2.9vw, 41px); }
+body[data-view="table"] .mahjong-table .river-bottom { bottom: 12%; left: 40%; }
+body[data-view="table"] .mahjong-table .river-top { top: 12%; left: 40%; }
+body[data-view="table"] .mahjong-table .river-left { left: 21%; top: 35%; }
+body[data-view="table"] .mahjong-table .river-right { right: 21%; top: 35%; }
+
+body[data-view="table"] .hand-dock {
+  width: min(calc(100vw - 105px), 1120px);
+  margin: -2px auto 0;
+  padding: 0 18px 8px;
+  position: relative;
+}
+body[data-view="table"] .turn-line {
+  width: 100%;
+  min-height: 43px;
+  margin: 0 auto 8px;
+  padding: 5px 10px;
+  border: 1px solid rgba(63,60,49,.26);
+  border-radius: 3px;
+  background: rgba(240,234,221,.94);
+  box-shadow: 0 4px 12px rgba(53,51,43,.10);
+}
+body[data-view="table"] .turn-line > span { width: 31px; height: 31px; border-radius: 2px; }
+body[data-view="table"] .turn-line p { margin: 0 18px 0 auto; }
+body[data-view="table"] .player-score { padding-left: 18px; border-left: 1px solid var(--line); font: 500 17px/1 Georgia, serif; }
+body[data-view="table"] .hand {
+  min-height: 88px;
+  padding: 0 8px;
+  gap: clamp(1px, .22vw, 3px);
+  perspective: 1000px;
+}
+body[data-view="table"] .hand .tile {
+  width: clamp(43px, 4.65vw, 66px);
+  border: 1px solid rgba(69,65,53,.36);
+  border-radius: 5px 5px 4px 4px;
+  background: linear-gradient(105deg, #f3eee2 0%, #e8dfcc 100%);
+  box-shadow: 1px 6px 0 #b6aa91, 3px 9px 9px rgba(40,42,35,.22), inset 1px 1px 0 rgba(255,255,255,.75);
+  transform-origin: center bottom;
+}
+body[data-view="table"] .hand .tile:hover { transform: translateY(-10px) rotateX(-3deg); }
+body[data-view="table"] .hand-actions { position: static; justify-content: center; gap: 7px; margin: 8px 0 0; }
+body[data-view="table"] .hand-actions .action-button {
+  min-width: 80px;
+  min-height: 36px;
+  padding: 0 15px;
+  border-radius: 3px;
+  background: rgba(240,234,221,.95);
+  font-size: 13px;
+  box-shadow: 0 3px 7px rgba(47,48,40,.08);
+}
+body[data-view="table"] .hand-actions .ron-action { background: #a53c2e; }
+
+@media (max-width: 900px) {
+  body[data-view="table"] .game-stage { padding-left: 76px; padding-right: 12px; }
+  body[data-view="table"] .table-scene { width: min(80vw, calc((100vh - 245px) * 1.58)); }
+  body[data-view="table"] .plaque-left, body[data-view="table"] .plaque-right { display: none; }
+  body[data-view="table"] .hand-actions { margin-top: 10px; }
+  body[data-view="table"] .hand-dock { width: calc(100vw - 88px); }
+}
+
+@media (max-width: 600px) {
+  body[data-view="table"] { overflow-y: auto; }
+  body[data-view="table"] .table-view { min-height: 100svh; height: auto; }
+  body[data-view="table"] .table-sidebar.collapsed { width: 48px; }
+  body[data-view="table"] .game-stage { min-height: 100svh; height: auto; grid-template-rows: 18px auto auto; padding: 8px 4px 18px 54px; overflow: visible; }
+  body[data-view="table"] .stage-meta { width: 94%; }
+  body[data-view="table"] .table-scene { width: calc(100vw - 68px); margin-top: 34px; }
+  body[data-view="table"] .mahjong-table { aspect-ratio: 1.08; border-width: 7px; transform: perspective(1000px) rotateX(12deg); }
+  body[data-view="table"] .player-plaque { min-width: 185px; }
+  body[data-view="table"] .hand-dock { width: calc(100vw - 58px); padding-inline: 2px; margin-top: 10px; }
+  body[data-view="table"] .turn-line { width: 100%; }
+  body[data-view="table"] .player-score { font-size: 12px; padding-left: 8px; }
+  body[data-view="table"] .hand .tile { width: clamp(20px, 5.55vw, 33px); border-radius: 3px; box-shadow: 1px 3px 0 #b6aa91, 1px 5px 5px rgba(40,42,35,.16); }
+  body[data-view="table"] .hand-actions { position: static; margin-top: 12px; }
+}
+
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
 
 @media (max-width: 600px) {
@@ -217,4 +459,26 @@ nav { display: flex; gap: 5px; }
   .mahjong-table .river { grid-template-columns: repeat(6, 14px); grid-auto-rows: 19px; }.mahjong-table .river-tile { width: 14px; height: 19px; }
   .mahjong-table .river-bottom { left: 34%; }.mahjong-table .river-top { left: 34%; }.mahjong-table .river-left { left: 13%; }.mahjong-table .river-right { right: 13%; }
   .hand .tile { width: clamp(20px, 5.2vw, 31px); }.turn-line { width: 88%; }.hand-actions { flex-wrap: wrap; }.hand-actions .action-button { min-width: 74px; min-height: 38px; font-size: 14px; }
+}
+
+/* Narrow screens use a readable top-down crop instead of squeezing four walls. */
+@media (max-width: 600px) {
+  body[data-view="table"] .game-stage { align-items: start; align-content: start; }
+  body[data-view="table"] .table-scene { margin-top: 42px; }
+  body[data-view="table"] .wall-left,
+  body[data-view="table"] .wall-right,
+  body[data-view="table"] .wall-bottom { display: none; }
+  body[data-view="table"] .wall-top {
+    display: flex;
+    left: 50%;
+    top: 5%;
+    transform: translateX(-50%);
+  }
+  body[data-view="table"] .wall-tile { width: 10px; height: 22px; }
+  body[data-view="table"] .mahjong-table .table-center { left: 38%; top: 35%; width: 24%; }
+  body[data-view="table"] .mahjong-table .marker-left { left: 24%; }
+  body[data-view="table"] .mahjong-table .marker-right { right: 24%; }
+  body[data-view="table"] .hand-dock { margin-top: 30px; }
+  body[data-view="table"] .turn-line { min-height: 48px; }
+  body[data-view="table"] .turn-line p { display: none; }
 }
