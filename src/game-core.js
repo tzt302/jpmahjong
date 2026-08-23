@@ -1,4 +1,4 @@
-import { createWall, shuffle, isWinningHand } from './engine.js';
+import { createWall, shuffle, isWinningHand, analyzeDiscards } from './engine.js';
 
 export const WINDS = ['東', '南', '西', '北'];
 
@@ -46,4 +46,13 @@ export function declareTsumo(game) {
   game.phase = 'won';
   game.winner = game.current;
   return game.winner;
+}
+
+export function chooseBotDiscard(game) {
+  const hand = game.hands[game.current];
+  const visibleTiles = game.rivers.flat();
+  const recommendation = analyzeDiscards(hand, visibleTiles, 4)[0];
+  if (!recommendation) return hand.length - 1;
+  const drawnIndex = hand.lastIndexOf(recommendation.discard);
+  return drawnIndex >= 0 ? drawnIndex : hand.length - 1;
 }

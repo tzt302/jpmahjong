@@ -20,7 +20,7 @@
       <button class="nav-link" data-route="table">牌桌</button>
       <button class="nav-link" data-route="quiz">何切馆</button>
     </nav>
-    <span class="version">FIRST EDITION · 0.1</span>
+    <span class="version">AI BATTLE · 0.2</span>
   </header>
 
   <main>
@@ -28,12 +28,12 @@
       <div class="hero-copy">
         <p class="kicker">打牌，也读牌</p>
         <h1>一张安静的<br><em>日本麻将牌桌</em></h1>
-        <p class="lede">没有 AI 提示，没有花哨特效。四位玩家围坐同一台设备轮替出牌，或独自完成每日何切。</p>
+        <p class="lede">没有 AI 教练和出牌提示，只保留纯粹对局。你将坐在东家位置，与三位电脑雀士完成一场日本麻将。</p>
         <div class="hero-actions">
-          <button class="primary" data-route="table">开始四人轮替局 <span>→</span></button>
+          <button class="primary" data-route="table">开始挑战 AI <span>→</span></button>
           <button class="secondary" data-route="quiz">今日何切</button>
         </div>
-        <p class="edition-note">第一版 · 四人同屏轮替 / 自摸判定 / 每日一题 / 闯关进度</p>
+        <p class="edition-note">第二版 · 单人对战三位 AI / 自摸判定 / 每日一题 / 闯关进度</p>
       </div>
       <div class="hero-table" aria-hidden="true">
         <div class="ink-circle"></div>
@@ -57,7 +57,7 @@
           <p class="kicker">牌局记录</p>
           <h2>東一局</h2>
           <ol id="seatList" class="seat-list"></ol>
-          <div class="rule-note"><strong>首版规则</strong><span>四人轮替 · 无电脑玩家<br>自摸判定 · 牌山流局</span></div>
+          <div class="rule-note"><strong>当前规则</strong><span>玩家对战三位 AI<br>无 AI 教练 · 不提示切牌</span></div>
           <button id="restartButton" class="text-button">重新开局</button>
         </div>
       </aside>
@@ -113,14 +113,6 @@
       </div>
     </section>
   </main>
-
-  <div id="handoff" class="handoff hidden" role="dialog" aria-modal="true">
-    <div class="handoff-card">
-      <span id="handoffSeal">南</span><p>请把设备交给</p><h2 id="handoffName">南家</h2>
-      <small>其他玩家请移开视线</small>
-      <button id="revealButton" class="primary">查看手牌</button>
-    </div>
-  </div>
 
   <div id="resultModal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="result-card"><span class="result-seal">和</span><p id="resultEyebrow">本局结束</p><h2 id="resultTitle">東家 自摸</h2><p id="resultCopy"></p><button id="newRoundButton" class="primary">再开一局</button></div>

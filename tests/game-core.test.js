@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGame, discard, canTsumo, declareTsumo } from '../src/game-core.js';
+import { createGame, discard, canTsumo, declareTsumo, chooseBotDiscard } from '../src/game-core.js';
 
 test('new game deals 14 tiles to east and 13 to the others', () => {
   const game = createGame(() => 0.5);
@@ -26,4 +26,11 @@ test('valid completed hand can declare tsumo', () => {
   assert.equal(canTsumo(game), true);
   assert.equal(declareTsumo(game), 0);
   assert.equal(game.phase, 'won');
+});
+
+test('bot chooses a valid discard index', () => {
+  const game = createGame(() => 0.33);
+  discard(game, 0);
+  const index = chooseBotDiscard(game);
+  assert.ok(index >= 0 && index < 14);
 });

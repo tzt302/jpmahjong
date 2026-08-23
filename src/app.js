@@ -1,12 +1,12 @@
 import { TILE_LABELS } from './engine.js';
 import { tileFaceMarkup } from './tiles.js';
-import { createGame, discard, canTsumo, declareTsumo, WINDS } from './game-core.js';
+import { createGame, discard, canTsumo, declareTsumo, chooseBotDiscard, WINDS } from './game-core.js';
 import { QUESTIONS } from './questions.js';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 let game = null;
-let handRevealed = false;
+let botBusy = false;
 let quizIndex = Number(localStorage.getItem('jpmahjong-quiz-index') || 0) % QUESTIONS.length;
 let quizDone = JSON.parse(localStorage.getItem('jpmahjong-quiz-done') || '[]');
 
@@ -30,7 +30,7 @@ $$('[data-route]').forEach(control => control.addEventListener('click', event =>
 
 function startGame() {
   game = createGame();
-  handRevealed = true;
+  botBusy = false;
   $('#resultModal').classList.add('hidden');
   renderGame();
 }
@@ -38,47 +38,56 @@ function startGame() {
 function renderGame() {
   $('#wallText').textContent = `牌山 ${game.wall.length}`;
   $('#centerWall').textContent = game.wall.length;
+  const humanTurn = game.current === 0;
   $('#turnSeal').textContent = WINDS[game.current];
-  $('#turnName').textContent = `${WINDS[game.current]}家`;
-  $('#turnMessage').textContent = game.phase === 'draw' ? '牌山已尽' : '选择一张牌打出';
-  $('#seatList').innerHTML = WINDS.map((wind, i) => `<li class="${i === game.current ? 'current' : ''}"><b>${wind}家</b><span>${game.rivers[i].length} 枚切牌</span></li>`).join('');
+  $('#turnName').textContent = humanTurn ? '你 · 東家' : `AI · ${WINDS[game.current]}家`;
+  $('#turnMessage').textContent = game.phase === 'draw' ? '牌山已尽' : humanTurn ? '选择一张牌打出' : '电脑雀士正在思考…';
+  $('#seatList').innerHTML = WINDS.map((wind, i) => `<li class="${i === game.current ? 'current' : ''}"><b>${i === 0 ? '你' : `AI ${wind}家`}</b><span>${game.rivers[i].length} 枚切牌</span></li>`).join('');
   game.rivers.forEach((river, i) => {
     $(`#river${i}`).innerHTML = river.map(tile => `<span class="river-tile">${tileFaceMarkup(tile)}</span>`).join('');
   });
   const hand = game.hands[game.current];
-  $('#hand').innerHTML = handRevealed ? hand.map((tile, index) => tileMarkup(tile, tile === game.drawn && index === hand.lastIndexOf(tile) ? 'drawn' : '')).join('') : '';
-  $('#tsumoButton').classList.toggle('hidden', !canTsumo(game));
+  $('#hand').innerHTML = humanTurn ? hand.map((tile, index) => tileMarkup(tile, tile === game.drawn && index === hand.lastIndexOf(tile) ? 'drawn' : '')).join('') : '<div class="bot-thinking"><i></i><span>牌背已扣下</span></div>';
+  $('#tsumoButton').classList.toggle('hidden', !humanTurn || !canTsumo(game));
+  $('#sortButton').disabled = !humanTurn;
   if (game.phase === 'draw') showResult('荒牌流局', '牌山已经摸完。本版暂不计算听牌罚符。');
   bindHand();
 }
 
 function bindHand() {
   $$('#hand .tile').forEach((tile, index) => tile.addEventListener('click', () => {
-    if (!handRevealed || game.phase !== 'playing') return;
+    if (botBusy || game.current !== 0 || game.phase !== 'playing') return;
     tile.classList.add('discarding');
     setTimeout(() => {
       discard(game, index);
-      handRevealed = false;
       renderGame();
-      showHandoff();
+      botBusy = true;
+      window.setTimeout(runBotTurn, 520);
     }, 130);
   }));
 }
 
-function showHandoff() {
-  if (game.phase !== 'playing') return;
-  $('#handoffSeal').textContent = WINDS[game.current];
-  $('#handoffName').textContent = `${WINDS[game.current]}家`;
-  $('#handoff').classList.remove('hidden');
+function runBotTurn() {
+  if (game.phase !== 'playing' || game.current === 0) {
+    botBusy = false;
+    renderGame();
+    return;
+  }
+  if (canTsumo(game)) {
+    const winner = declareTsumo(game);
+    botBusy = false;
+    renderGame();
+    showResult(`${WINDS[winner]}家 AI 自摸`, '电脑雀士完成了和牌形。本版不会向玩家提供任何出牌建议。');
+    return;
+  }
+  discard(game, chooseBotDiscard(game));
+  renderGame();
+  if (game.phase === 'playing' && game.current !== 0) window.setTimeout(runBotTurn, 520);
+  else botBusy = false;
 }
 
-$('#revealButton').addEventListener('click', () => {
-  handRevealed = true;
-  $('#handoff').classList.add('hidden');
-  renderGame();
-});
-
 $('#sortButton').addEventListener('click', () => {
+  if (game.current !== 0 || botBusy) return;
   game.hands[game.current].sort((a, b) => a - b);
   renderGame();
 });

@@ -102,6 +102,9 @@ nav { display: flex; gap: 5px; }
 .tile-face-image { width: 100%; height: 100%; object-fit: contain; display: block; }
 .hand-actions { position: absolute; right: 18px; top: 6px; display: flex; gap: 7px; }
 .action-button { min-height: 38px; padding: 0 14px; background: rgba(238,231,215,.85); }.action-button.win { background: var(--vermillion); color: #fff5e6; border-color: var(--vermillion); }
+.action-button:disabled { opacity: .35; cursor: not-allowed; }
+.bot-thinking { height: 66px; display: flex; align-items: center; gap: 14px; color: var(--muted); font-size: 12px; letter-spacing: .15em; }
+.bot-thinking i { display: block; width: 43px; height: 59px; border: 2px solid #d3c7ae; background: repeating-linear-gradient(45deg, var(--indigo-dark) 0 3px, #294a50 3px 6px); box-shadow: 2px 4px 0 #b9ad95; }
 
 .quiz-view { padding: 54px 7vw; }
 .page-heading { display: flex; align-items: end; justify-content: space-between; max-width: 1200px; margin: 0 auto 34px; }
