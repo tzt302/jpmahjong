@@ -7,6 +7,8 @@ const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 let game = null;
 let botBusy = false;
+let lastDiscardPlayer = null;
+let audioContext = null;
 let quizIndex = Number(localStorage.getItem('jpmahjong-quiz-index') || 0) % QUESTIONS.length;
 let quizDone = JSON.parse(localStorage.getItem('jpmahjong-quiz-done') || '[]');
 
@@ -20,6 +22,74 @@ function buildTableFurniture() {
     $(selector).innerHTML = back.repeat(17);
   });
   $('#doraTile').innerHTML = tileFaceMarkup(3);
+}
+
+const delay = milliseconds => new Promise(resolve => window.setTimeout(resolve, milliseconds));
+
+function playTileSound() {
+  try {
+    audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
+    if (audioContext.state === 'suspended') audioContext.resume();
+    const duration = .055;
+    const buffer = audioContext.createBuffer(1, audioContext.sampleRate * duration, audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i += 1) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (data.length * .16));
+    const source = audioContext.createBufferSource();
+    const filter = audioContext.createBiquadFilter();
+    const gain = audioContext.createGain();
+    filter.type = 'bandpass'; filter.frequency.value = 920; filter.Q.value = .75;
+    gain.gain.setValueAtTime(.17, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.001, audioContext.currentTime + duration);
+    source.buffer = buffer; source.connect(filter); filter.connect(gain); gain.connect(audioContext.destination); source.start();
+  } catch { /* Sound is optional when the browser blocks Web Audio. */ }
+}
+
+function nextRiverRect(player) {
+  const river = $(`#river${player}`);
+  const target = document.createElement('span');
+  target.className = 'river-tile flight-target';
+  target.style.visibility = 'hidden';
+  river.append(target);
+  const rect = target.getBoundingClientRect();
+  target.remove();
+  return rect;
+}
+
+async function flyTile(faceMarkup, startRect, player) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const targetRect = nextRiverRect(player);
+  const flyer = document.createElement('span');
+  flyer.className = 'flying-tile';
+  flyer.innerHTML = faceMarkup;
+  Object.assign(flyer.style, { left: `${startRect.left}px`, top: `${startRect.top}px`, width: `${startRect.width}px`, height: `${startRect.height}px` });
+  document.body.append(flyer);
+  const dx = targetRect.left - startRect.left;
+  const dy = targetRect.top - startRect.top;
+  const scale = Math.max(.42, targetRect.width / Math.max(1, startRect.width));
+  const rotation = player === 1 ? -90 : player === 2 ? 180 : player === 3 ? 90 : -2;
+  const animation = flyer.animate([
+    { transform: 'translate3d(0,0,0) rotate(0deg) scale(1)', filter: 'brightness(1)', offset: 0 },
+    { transform: `translate3d(${dx * .68}px,${dy * .68 - 22}px,0) rotate(${rotation * .6}deg) scale(${Math.max(scale, .72)})`, filter: 'brightness(1.06)', offset: .68 },
+    { transform: `translate3d(${dx}px,${dy}px,0) rotate(${rotation}deg) scale(${scale})`, filter: 'brightness(.98)', offset: 1 }
+  ], { duration: 310, easing: 'cubic-bezier(.2,.72,.25,1)', fill: 'forwards' });
+  await animation.finished.catch(() => {});
+  flyer.remove();
+}
+
+async function animateWallDraw(player) {
+  const wall = $({ 1: '#wallRight', 2: '#wallTop', 3: '#wallLeft' }[player]);
+  wall?.classList.add('drawing');
+  await delay(170);
+  wall?.classList.remove('drawing');
+}
+
+async function animateAiDiscard(player, tile) {
+  const plaque = $({ 1: '.plaque-right', 2: '.plaque-top', 3: '.plaque-left' }[player]);
+  const wall = $({ 1: '#wallRight', 2: '#wallTop', 3: '#wallLeft' }[player]);
+  const plaqueRect = plaque.getBoundingClientRect();
+  const sourceRect = plaqueRect.width ? plaqueRect : wall.getBoundingClientRect();
+  const startRect = { left: sourceRect.left + sourceRect.width / 2 - 22, top: sourceRect.top + sourceRect.height / 2 - 30, width: 44, height: 61 };
+  await flyTile(tileFaceMarkup(tile), startRect, player);
 }
 
 function route(name) {
@@ -52,7 +122,7 @@ function renderGame() {
   $('#turnMessage').textContent = game.phase === 'draw' ? '牌山已尽' : humanTurn ? '选择一张牌打出' : '电脑雀士正在思考…';
   $('#seatList').innerHTML = WINDS.map((wind, i) => `<li class="${i === game.current ? 'current' : ''}"><b>${i === 0 ? '你' : `AI ${wind}家`}</b><span>${game.rivers[i].length} 枚切牌</span></li>`).join('');
   game.rivers.forEach((river, i) => {
-    $(`#river${i}`).innerHTML = river.map(tile => `<span class="river-tile">${tileFaceMarkup(tile)}</span>`).join('');
+    $(`#river${i}`).innerHTML = river.map((tile, index) => `<span class="river-tile ${i === lastDiscardPlayer && index === river.length - 1 ? 'land' : ''}">${tileFaceMarkup(tile)}</span>`).join('');
   });
   const hand = game.hands[0];
   $('#hand').classList.toggle('waiting', !humanTurn);
@@ -61,27 +131,32 @@ function renderGame() {
   $('#sortButton').disabled = !humanTurn;
   if (game.phase === 'draw') showResult('荒牌流局', '牌山已经摸完。本版暂不计算听牌罚符。');
   bindHand();
+  lastDiscardPlayer = null;
 }
 
 function bindHand() {
-  $$('#hand .tile').forEach((tile, index) => tile.addEventListener('click', () => {
+  $$('#hand .tile').forEach((tile, index) => tile.addEventListener('click', async () => {
     if (botBusy || game.current !== 0 || game.phase !== 'playing') return;
+    botBusy = true;
     tile.classList.add('discarding');
-    setTimeout(() => {
-      discard(game, index);
-      renderGame();
-      botBusy = true;
-      window.setTimeout(runBotTurn, 520);
-    }, 130);
+    const selectedTile = game.hands[0][index];
+    await flyTile(tileFaceMarkup(selectedTile), tile.getBoundingClientRect(), 0);
+    discard(game, index);
+    lastDiscardPlayer = 0;
+    playTileSound();
+    renderGame();
+    window.setTimeout(runBotTurn, 360);
   }));
 }
 
-function runBotTurn() {
+async function runBotTurn() {
   if (game.phase !== 'playing' || game.current === 0) {
     botBusy = false;
     renderGame();
     return;
   }
+  const player = game.current;
+  await animateWallDraw(player);
   if (canTsumo(game)) {
     const winner = declareTsumo(game);
     botBusy = false;
@@ -89,10 +164,15 @@ function runBotTurn() {
     showResult(`${WINDS[winner]}家 AI 自摸`, '电脑雀士完成了和牌形。本版不会向玩家提供任何出牌建议。');
     return;
   }
-  discard(game, chooseBotDiscard(game));
+  const discardIndex = chooseBotDiscard(game);
+  const discardedTile = game.hands[player][discardIndex];
+  await animateAiDiscard(player, discardedTile);
+  discard(game, discardIndex);
+  lastDiscardPlayer = player;
+  playTileSound();
+  if (game.current === 0) botBusy = false;
   renderGame();
-  if (game.phase === 'playing' && game.current !== 0) window.setTimeout(runBotTurn, 520);
-  else botBusy = false;
+  if (game.phase === 'playing' && game.current !== 0) window.setTimeout(runBotTurn, 280);
 }
 
 $('#sortButton').addEventListener('click', () => {

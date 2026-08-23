@@ -92,6 +92,7 @@ nav { display: flex; gap: 5px; }
 .river-bottom { bottom: 12%; left: 36%; }.river-top { top: 12%; left: 36%; transform: rotate(180deg); }.river-left { left: 13%; top: 36%; transform: rotate(90deg); }.river-right { right: 13%; top: 36%; transform: rotate(-90deg); }
 .river-tile { width: 25px; height: 34px; display: grid; place-items: center; background: #e8dfcd; border-radius: 2px; box-shadow: 1px 2px 0 rgba(19,45,38,.35); overflow: hidden; }
 .river-tile img { width: 90%; height: 90%; object-fit: contain; }
+.river-tile.land { animation: tile-land .19s cubic-bezier(.2,.8,.25,1); transform-origin: center bottom; }
 .hand-dock { width: min(100%, 930px); padding: 8px 18px 0; position: relative; z-index: 2; }
 .turn-line { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
 .turn-line > span { display: grid; place-items: center; width: 32px; height: 32px; background: var(--vermillion); color: var(--paper); }
@@ -101,6 +102,13 @@ nav { display: flex; gap: 5px; }
 .hand.waiting .tile:hover { transform: none; filter: saturate(.72); }
 .tile { width: clamp(34px, 4.7vw, 58px); aspect-ratio: .72; padding: 3px; border: 1px solid rgba(44,48,38,.28); background: #efe8d9; border-radius: 3px; box-shadow: 1px 5px 0 #c7baa1, 2px 7px 7px rgba(35,38,31,.22); cursor: pointer; transition: transform .13s ease, filter .13s; }
 .tile:hover { transform: translateY(-9px); filter: brightness(1.04); }.tile.drawn { margin-left: 9px; }.tile.discarding { transform: translateY(-22px) rotate(-2deg); opacity: .4; }
+.tile.drawn { animation: drawn-tile-arrive .32s cubic-bezier(.18,.8,.28,1); }
+.flying-tile { position: fixed; z-index: 100; display: grid; place-items: center; padding: 3px; overflow: hidden; pointer-events: none; border: 1px solid rgba(44,48,38,.3); border-radius: 3px; background: #efe8d9; box-shadow: 3px 10px 12px rgba(31,37,31,.32), 1px 5px 0 #c7baa1; transform-origin: left top; }
+.flying-tile img { width: 100%; height: 100%; object-fit: contain; }
+.tile-wall.drawing .wall-tile:last-child { animation: wall-draw .17s cubic-bezier(.2,.8,.3,1); }
+@keyframes wall-draw { 0% { transform: translateY(0); } 48% { transform: translateY(-12px) rotate(-3deg); filter: brightness(1.18); } 100% { transform: translateY(0); } }
+@keyframes tile-land { 0% { transform: translateY(-8px) scale(1.08); filter: brightness(1.08); } 62% { transform: translateY(2px) scale(.97); } 100% { transform: translateY(0) scale(1); } }
+@keyframes drawn-tile-arrive { 0% { opacity: 0; transform: translateX(28px) translateY(-12px) rotate(4deg); } 72% { opacity: 1; transform: translateX(-2px) translateY(1px) rotate(-1deg); } 100% { transform: translateX(0) translateY(0) rotate(0); } }
 .tile-face-image { width: 100%; height: 100%; object-fit: contain; display: block; }
 .hand-actions { position: absolute; right: 18px; top: 6px; display: flex; gap: 7px; }
 .action-button { min-height: 38px; padding: 0 14px; background: rgba(238,231,215,.85); }.action-button.win { background: var(--vermillion); color: #fff5e6; border-color: var(--vermillion); }
