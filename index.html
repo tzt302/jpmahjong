@@ -20,7 +20,7 @@
       <button class="nav-link" data-route="table">牌桌</button>
       <button class="nav-link" data-route="quiz">何切馆</button>
     </nav>
-    <span class="version">AI BATTLE · 0.2</span>
+    <span class="version">AI BATTLE · 0.3</span>
   </header>
 
   <main>
@@ -64,22 +64,34 @@
 
       <div class="game-stage">
         <div class="stage-meta"><span id="roundText">東一局</span><span id="wallText">牌山 83</span></div>
-        <div class="mahjong-table">
-          <div class="felt-grain"></div>
-          <div class="seat-marker marker-top">北家</div>
-          <div class="seat-marker marker-left">西家</div>
-          <div class="seat-marker marker-right">南家</div>
-          <div class="seat-marker marker-bottom">東家</div>
-          <div class="table-center"><b>東</b><span>一局</span><small id="centerWall">83</small></div>
-          <div id="river0" class="river river-bottom"></div>
-          <div id="river1" class="river river-right"></div>
-          <div id="river2" class="river river-top"></div>
-          <div id="river3" class="river river-left"></div>
+        <div class="table-scene">
+          <div class="player-plaque plaque-top"><b>西</b><span>静寂の庭</span><strong>25,000</strong></div>
+          <div class="player-plaque plaque-left"><b>北</b><span>月下の牌</span><strong>25,000</strong></div>
+          <div class="player-plaque plaque-right"><b>南</b><span>竹林の道</span><strong>25,000</strong></div>
+          <div class="mahjong-table">
+            <div class="felt-grain"></div>
+            <div id="wallTop" class="tile-wall wall-top" aria-hidden="true"></div>
+            <div id="wallLeft" class="tile-wall wall-left" aria-hidden="true"></div>
+            <div id="wallRight" class="tile-wall wall-right" aria-hidden="true"></div>
+            <div id="wallBottom" class="tile-wall wall-bottom" aria-hidden="true"></div>
+            <div class="seat-marker marker-top">西</div>
+            <div class="seat-marker marker-left">北</div>
+            <div class="seat-marker marker-right">南</div>
+            <div class="seat-marker marker-bottom">東</div>
+            <div class="table-center"><b>東一局</b><span>供托 × 0　 本场 × 0</span><small>残り <i id="centerWall">83</i></small></div>
+            <div class="dora-box"><span>ドラ表示牌</span><div id="doraTile"></div></div>
+            <div id="river0" class="river river-bottom"></div>
+            <div id="river1" class="river river-right"></div>
+            <div id="river2" class="river river-top"></div>
+            <div id="river3" class="river river-left"></div>
+          </div>
         </div>
         <section class="hand-dock">
           <div class="turn-line"><span id="turnSeal">東</span><div><small>手番</small><strong id="turnName">東家</strong></div><p id="turnMessage">选择一张牌打出</p></div>
           <div id="hand" class="hand" aria-label="当前玩家手牌"></div>
           <div class="hand-actions">
+            <button class="action-button muted-action" disabled>立直</button>
+            <button class="action-button ron-action" disabled>ロン</button>
             <button id="tsumoButton" class="action-button win hidden">自摸</button>
             <button id="sortButton" class="action-button">理牌</button>
           </div>

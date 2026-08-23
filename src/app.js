@@ -14,6 +14,14 @@ function tileMarkup(tile, className = '') {
   return `<button class="tile ${className}" data-tile="${tile}" aria-label="${TILE_LABELS[tile]}">${tileFaceMarkup(tile)}</button>`;
 }
 
+function buildTableFurniture() {
+  const back = '<span class="wall-tile"><img src="assets/tiles/regular/Back.svg" alt=""></span>';
+  ['#wallTop', '#wallLeft', '#wallRight', '#wallBottom'].forEach(selector => {
+    $(selector).innerHTML = back.repeat(17);
+  });
+  $('#doraTile').innerHTML = tileFaceMarkup(3);
+}
+
 function route(name) {
   $$('.view').forEach(view => view.classList.add('hidden'));
   $(`#${name}View`).classList.remove('hidden');
@@ -163,4 +171,5 @@ $('#nextQuestion').addEventListener('click', () => {
 });
 
 const initial = ['home', 'table', 'quiz'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'home';
+buildTableFurniture();
 route(initial);
