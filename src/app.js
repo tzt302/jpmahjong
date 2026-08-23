@@ -54,8 +54,9 @@ function renderGame() {
   game.rivers.forEach((river, i) => {
     $(`#river${i}`).innerHTML = river.map(tile => `<span class="river-tile">${tileFaceMarkup(tile)}</span>`).join('');
   });
-  const hand = game.hands[game.current];
-  $('#hand').innerHTML = humanTurn ? hand.map((tile, index) => tileMarkup(tile, tile === game.drawn && index === hand.lastIndexOf(tile) ? 'drawn' : '')).join('') : '<div class="bot-thinking"><i></i><span>牌背已扣下</span></div>';
+  const hand = game.hands[0];
+  $('#hand').classList.toggle('waiting', !humanTurn);
+  $('#hand').innerHTML = hand.map((tile, index) => tileMarkup(tile, humanTurn && tile === game.drawn && index === hand.lastIndexOf(tile) ? 'drawn' : '')).join('');
   $('#tsumoButton').classList.toggle('hidden', !humanTurn || !canTsumo(game));
   $('#sortButton').disabled = !humanTurn;
   if (game.phase === 'draw') showResult('荒牌流局', '牌山已经摸完。本版暂不计算听牌罚符。');
