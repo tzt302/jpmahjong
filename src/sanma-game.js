@@ -1,5 +1,5 @@
 import {
-  ActionKind, applyAction, calculateShanten, createGame, evaluateWin,
+  ActionKind, applyAction, calculatePoints, calculateShanten, createGame, evaluateWin,
   finalRanking, isPermanentFuriten, isWinningHand, nextRound, previewWin
 } from '../vendor/sanma-core/browser.js';
 
@@ -7,17 +7,44 @@ const HUMAN = 0;
 const RON_HONBA = 300;
 
 function actionCode(action) {
-  if (action.kind === ActionKind.Discard) return String(action.tile);
-  if (action.kind === ActionKind.Riichi) return String(action.tile);
+  if (action.kind === ActionKind.Discard) return `${action.tile}${action.aka ? 'r' : ''}`;
+  if (action.kind === ActionKind.Riichi) return `${action.tile}${action.aka ? 'r' : ''}`;
   if ([ActionKind.Ankan, ActionKind.Kakan].includes(action.kind)) return `${action.kind}:${action.tile}`;
   if ([ActionKind.Pon, ActionKind.Daiminkan].includes(action.kind)) return `${action.kind}:${action.called}`;
   return action.kind;
+}
+
+function discardVariants(player, kind, tile) {
+  const hasAka = (player.akaInHand || []).includes(tile);
+  if (!hasAka) return [{ kind, tile }];
+  const copies = player.hand.filter(value => value === tile).length;
+  if (copies > 1) return [{ kind, tile, aka: false }, { kind, tile, aka: true }];
+  return [{ kind, tile, aka: true }];
 }
 
 function discardShanten(state, player, tile) {
   const hand = [...state.players[player].hand];
   hand.splice(hand.indexOf(tile), 1);
   return calculateShanten(hand, state.players[player].melds.length);
+}
+
+function waitTiles(hand) {
+  const waits = [];
+  for (let tile = 0; tile < 34; tile += 1) {
+    if (tile >= 1 && tile <= 7) continue;
+    if (hand.filter(value => value === tile).length >= 4) continue;
+    if (isWinningHand([...hand, tile])) waits.push(tile);
+  }
+  return waits;
+}
+
+function legalRiichiAnkan(state, player, tile) {
+  if (!player.riichi || state.lastDrawnTile !== tile) return false;
+  if (player.hand.filter(value => value === tile).length !== 4) return false;
+  const before = [...player.hand];
+  before.splice(before.lastIndexOf(tile), 1);
+  const after = player.hand.filter(value => value !== tile);
+  return waitTiles(before).join(',') === waitTiles(after).join(',');
 }
 
 function chooseTurnAction(state) {
@@ -39,16 +66,25 @@ function validTurnActions(state) {
   const player = state.players[state.currentPlayer];
   const forbidden = new Set(state.kuikae || []);
   const discardTiles = player.riichi ? [state.lastDrawnTile] : [...new Set(player.hand)];
-  const actions = discardTiles.filter(tile => tile != null && !forbidden.has(tile)).map(tile => ({ kind: ActionKind.Discard, tile }));
+  const actions = discardTiles
+    .filter(tile => tile != null && !forbidden.has(tile))
+    .flatMap(tile => discardVariants(player, ActionKind.Discard, tile));
   if (state.lastDrawnTile != null && isWinningHand(player.hand) && previewWin(state, state.currentPlayer, true, state.lastDrawnTile)) actions.push({ kind: ActionKind.Tsumo });
   if (player.isMenzen && !player.riichi && player.score >= 1000) {
-    for (const tile of new Set(player.hand)) if (discardShanten(state, state.currentPlayer, tile) === 0) actions.push({ kind: ActionKind.Riichi, tile });
+    for (const tile of new Set(player.hand)) {
+      if (discardShanten(state, state.currentPlayer, tile) === 0) {
+        actions.push(...discardVariants(player, ActionKind.Riichi, tile));
+      }
+    }
   }
   if (!player.riichi) {
     for (const tile of new Set(player.hand)) if (player.hand.filter(value => value === tile).length === 4) actions.push({ kind: ActionKind.Ankan, tile });
     for (const meld of player.melds) if (meld.type === 'pon' && player.hand.includes(meld.tiles[0])) actions.push({ kind: ActionKind.Kakan, tile: meld.tiles[0] });
+  } else {
+    for (const tile of new Set(player.hand)) if (legalRiichiAnkan(state, player, tile)) actions.push({ kind: ActionKind.Ankan, tile });
   }
-  if (player.hand.includes(30)) actions.push({ kind: ActionKind.Kita });
+  if (state.lastDrawnTile != null && player.hand.includes(30)
+      && (!player.riichi || state.lastDrawnTile === 30)) actions.push({ kind: ActionKind.Kita });
   const terminals = new Set(player.hand.filter(tile => [0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33].includes(tile)));
   if (player.discards.length === 0 && state.players.every(item => item.melds.length === 0) && terminals.size >= 9) actions.push({ kind: ActionKind.Kyushukyuhai });
   return actions;
@@ -117,10 +153,23 @@ export function settleSanmaRon(state, winners) {
   const details = [];
   winners.forEach((winner, index) => {
     const result = evaluateWin(state, winner, false, tile);
-    const payment = result.scoreResult.ronPayment + state.honba * RON_HONBA;
-    scores[loser] -= payment;
+    const basePayment = result.scoreResult.ronPayment;
+    const honbaPayment = state.honba * RON_HONBA;
+    const payment = basePayment + honbaPayment;
+    const hasPaoYaku = result.yakuList.some(yaku => yaku.name === 'daisangen' || yaku.name === 'daisuushii');
+    const pao = state.paoTarget != null && hasPaoYaku ? state.paoTarget : null;
+    if (pao != null) {
+      const paoPayment = calculatePoints({
+        han: 13, fu: 0, isDealer: winner === state.dealer, isTsumo: false, playerCount: 3
+      }).ronPayment;
+      const paoShare = Math.floor(paoPayment / 2);
+      scores[loser] -= basePayment - (paoPayment - paoShare);
+      scores[pao] -= paoPayment - paoShare + honbaPayment;
+    } else {
+      scores[loser] -= payment;
+    }
     scores[winner] += payment + (index === 0 ? state.kyotaku * 1000 : 0);
-    details.push({ winner, loser, ...result, payment });
+    details.push({ winner, loser, pao, ...result, payment });
   });
   const dealerWinner = winners.includes(state.dealer);
   return {
@@ -138,7 +187,9 @@ export function settleSanmaRon(state, winners) {
 function nagashiWinners(state) {
   const terminal = tile => tile >= 27 || [0, 8, 9, 17, 18, 26].includes(tile);
   return state.players.map((player, index) => ({ player, index }))
-    .filter(({ player }) => player.discards.length > 0 && player.discards.every(discard => terminal(discard.tile)))
+    .filter(({ player }) => player.nagashiEligible !== false
+      && player.discards.length > 0
+      && player.discards.every(discard => terminal(discard.tile)))
     .map(({ index }) => index);
 }
 
@@ -318,13 +369,18 @@ export class SanmaGameSession {
     const winners = ronWinners(this.state, this.temporaryFuriten);
     const humanCalls = callCandidates(this.state, HUMAN);
     const humanCanRon = winners.includes(HUMAN);
+    const aiWinners = winners.filter(player => player !== HUMAN);
+    // Ron has absolute priority over pon/daiminkan. Never let a human call
+    // steal a discard that an AI opponent has already won on.
+    if (!humanCanRon && aiWinners.length) return this.finishRon(aiWinners);
     if (humanCanRon || humanCalls.length) {
       this.request('discard-response', {
         hule: humanCanRon,
-        fulou: humanCalls.map(actionCode)
+        fulou: aiWinners.length ? [] : humanCalls.map(actionCode)
       }, reply => {
         if (reply.hule && humanCanRon) return this.finishRon(winners);
         if (humanCanRon) this.temporaryFuriten[HUMAN] = true;
+        if (aiWinners.length) return this.finishRon(aiWinners);
         if (reply.fulou) {
           const action = humanCalls.find(item => actionCode(item) === reply.fulou);
           if (!action) throw new Error('非法三麻鸣牌');
@@ -332,18 +388,22 @@ export class SanmaGameSession {
           this.emit('fulou', { l: HUMAN, m: reply.fulou });
           return;
         }
-        const aiWinners = winners.filter(player => player !== HUMAN);
-        if (aiWinners.length) return this.finishRon(aiWinners);
         const aiCall = bestAiCall(this.state);
+        const completedKakan = Boolean(this.state.chankan) && !aiCall;
         this.state = applyAction(this.state, aiCall || { kind: ActionKind.Pass });
-        this.emit(aiCall ? 'fulou' : 'pass', aiCall || {});
+        this.emit(completedKakan ? 'zimo' : aiCall ? 'fulou' : 'pass', completedKakan
+          ? { l: this.state.currentPlayer, p: this.state.lastDrawnTile }
+          : aiCall || {});
       });
       return;
     }
     if (winners.length) return this.finishRon(winners);
     const aiCall = bestAiCall(this.state);
+    const completedKakan = Boolean(this.state.chankan) && !aiCall;
     this.state = applyAction(this.state, aiCall || { kind: ActionKind.Pass });
-    this.emit(aiCall ? 'fulou' : 'pass', aiCall || {});
+    this.emit(completedKakan ? 'zimo' : aiCall ? 'fulou' : 'pass', completedKakan
+      ? { l: this.state.currentPlayer, p: this.state.lastDrawnTile }
+      : aiCall || {});
     this.schedule();
   }
 
@@ -390,8 +450,16 @@ export class SanmaGameSession {
       const winner = this.state.currentPlayer;
       this.lastResult = { type: 'tsumo', winners: [{ winner, ...evaluateWin(this.state, winner, true, this.state.lastDrawnTile) }] };
     }
-    if (!this.lastResult && this.state.phase === 'ryukyoku') this.lastResult = { type: 'ryukyoku' };
-    this.request('round-result', this.lastResult.type === 'ryukyoku' ? { pingju: { name: '荒牌流局' } } : { sanmaResult: this.lastResult }, () => {
+    if (!this.lastResult && this.state.phase === 'ryukyoku') {
+      this.lastResult = { type: 'ryukyoku', reason: this.state.ryukyokuReason || 'exhaustive' };
+    }
+    const drawNames = {
+      exhaustive: '荒牌流局', kyushukyuhai: '九種九牌', suukaikan: '四開槓',
+      suufonrenda: '四風連打', sanwahou: '三家和'
+    };
+    this.request('round-result', this.lastResult.type === 'ryukyoku'
+      ? { pingju: { name: drawNames[this.lastResult.reason] || '流局' } }
+      : { sanmaResult: this.lastResult }, () => {
       this.state = nextRound(this.state);
       this.temporaryFuriten = [false, false, false];
       this.lastResult = null;

@@ -1,7 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SanmaGameSession, settleSanmaRon } from '../src/sanma-game.js';
-import { ActionKind, applyAction, createGame } from '../vendor/sanma-core/browser.js';
+import {
+  ActionKind, applyAction, calculateFu, calculatePoints, createGame, createWall, drawRinshan,
+  evaluateWin, getDoraMarkers, getUraDoraMarkers, getValidActions, nextRound
+} from '../vendor/sanma-core/browser.js';
+
+test('sanma scoring keeps standard fu and limit tiers', () => {
+  const common = {
+    winningTile: 2,
+    melds: [],
+    pair: 27,
+    mentsu: [{ tiles: [0, 1, 2] }, { tiles: [9, 10, 11] }, { tiles: [18, 19, 20] }, { tiles: [23, 24, 25] }],
+    seatWind: 1,
+    roundWind: 0
+  };
+  assert.equal(calculateFu({ ...common, isTsumo: true, isPinhu: true }), 20);
+  assert.equal(calculateFu({ ...common, isTsumo: false, isPinhu: true }), 30);
+  assert.equal(calculateFu({ ...common, isTsumo: false, isPinhu: false, isChiitoi: true }), 25);
+  assert.equal(calculatePoints({ han: 5, fu: 30, isDealer: false, isTsumo: false, playerCount: 3 }).ronPayment, 8000);
+  assert.equal(calculatePoints({ han: 8, fu: 30, isDealer: true, isTsumo: false, playerCount: 3 }).ronPayment, 24000);
+  assert.equal(calculatePoints({ han: 13, fu: 30, isDealer: false, isTsumo: false, playerCount: 3 }).ronPayment, 32000);
+});
 
 function automaticReply(decision) {
   if (decision.kind === 'draw') {
@@ -40,6 +60,106 @@ test('nuki draws a replacement without revealing an extra dora indicator', () =>
   assert.equal(state.doraMarkers.length, indicators);
 });
 
+test('sanma dead wall has eight fixed replacement slots and stable dora pairs', () => {
+  let wall = createWall(3);
+  const visible = getDoraMarkers(wall)[0];
+  const ura = getUraDoraMarkers(wall)[0];
+  for (let draw = 0; draw < 8; draw += 1) {
+    const result = drawRinshan({ ...wall, doraCount: 1 });
+    assert.ok(result, `replacement draw ${draw + 1} should exist`);
+    wall = { ...result.wall, doraCount: 1 };
+    assert.equal(getDoraMarkers(wall)[0], visible);
+    assert.equal(getUraDoraMarkers(wall)[0], ura);
+  }
+  assert.equal(drawRinshan(wall), null);
+});
+
+test('riichi win counts ippatsu and ura dora while aka tiles exist in the wall', () => {
+  const wall = Array(108).fill(0);
+  wall[98] = 17; // first ura indicator: 9p -> 1p
+  wall[99] = 0;  // visible indicator does not match the hand
+  const winningHand = [9, 10, 11, 12, 13, 14, 18, 19, 20, 21, 22, 23, 27, 27];
+  let state = createGame({
+    playerCount: 3,
+    fixedWall: wall,
+    fixedHands: [winningHand, Array(13).fill(28), Array(13).fill(29)]
+  });
+  state = {
+    ...state,
+    currentPlayer: 0,
+    lastDrawnTile: 27,
+    turnCount: 4,
+    players: state.players.map((player, index) => index === 0
+      ? { ...player, riichi: true, ippatsuEligible: true }
+      : player)
+  };
+  const result = evaluateWin(state, 0, true, 27);
+  assert.ok(result.yakuList.some(yaku => yaku.name === 'ippatsu'));
+  assert.equal(result.doraCount, 1, 'the concealed ura indicator adds one dora');
+  assert.equal(createWall(3).akaPositions.size, 2, '5p and 5s each have one red copy');
+});
+
+test('a call cancels every active ippatsu window', () => {
+  let state = createGame({ playerCount: 3 });
+  state = {
+    ...state,
+    phase: 'respond',
+    lastDiscard: 31,
+    lastDiscardPlayer: 0,
+    players: state.players.map((player, index) => ({
+      ...player,
+      hand: index === 1 ? [31, 31, ...player.hand.slice(2)] : player.hand,
+      ippatsuEligible: index !== 1
+    }))
+  };
+  state = applyAction(state, { kind: ActionKind.Pon, called: 31, actor: 1 });
+  assert.deepEqual(state.players.map(player => player.ippatsuEligible), [false, false, false]);
+});
+
+test('kakan opens chankan before consuming the dead-wall draw', () => {
+  let state = createGame({ playerCount: 3 });
+  state = {
+    ...state,
+    phase: 'discard',
+    currentPlayer: 0,
+    lastDrawnTile: 9,
+    players: state.players.map((player, index) => index === 0 ? {
+      ...player,
+      hand: [9, ...player.hand.slice(0, 13)],
+      melds: [{ type: 'pon', tiles: [9, 9, 9], calledFrom: 1 }],
+      isMenzen: false
+    } : player)
+  };
+  const rinshanBefore = state.rinshanIndex;
+  const doraBefore = state.doraMarkers.length;
+  state = applyAction(state, { kind: ActionKind.Kakan, tile: 9 });
+  assert.equal(state.phase, 'respond');
+  assert.equal(state.rinshanIndex, rinshanBefore);
+  assert.equal(state.doraMarkers.length, doraBefore);
+  state = applyAction(state, { kind: ActionKind.Pass });
+  assert.equal(state.phase, 'discard');
+  assert.equal(state.rinshanIndex, rinshanBefore - 1);
+  assert.equal(state.doraMarkers.length, doraBefore + 1);
+});
+
+test('public sanma action surface enforces riichi tsumogiri and legal ankan', () => {
+  let state = createGame({ playerCount: 3 });
+  state = {
+    ...state,
+    phase: 'discard',
+    currentPlayer: 0,
+    lastDrawnTile: 9,
+    players: state.players.map((player, index) => index === 0 ? {
+      ...player,
+      riichi: true,
+      hand: [9, 9, 9, 9, 18, 19, 20, 21, 22, 23, 27, 27, 27, 28]
+    } : player)
+  };
+  const actions = getValidActions(state);
+  assert.deepEqual(actions.filter(action => action.kind === ActionKind.Discard).map(action => action.tile), [9]);
+  assert.ok(actions.some(action => action.kind === ActionKind.Ankan && action.tile === 9));
+});
+
 test('double ron charges the discarder for both winners and awards one riichi pot', () => {
   const state = createGame({ playerCount: 3 });
   const winnerOne = [9, 10, 11, 18, 19, 20, 27, 27, 27, 31, 31, 31, 32];
@@ -65,6 +185,97 @@ test('double ron charges the discarder for both winners and awards one riichi po
   assert.ok(result.state.players[0].score < 35000);
   assert.ok(result.state.players[1].score > result.state.players[2].score, 'nearest winner receives the riichi pot');
   assert.equal(result.state.players.reduce((sum, player) => sum + player.score, 0), 106000);
+});
+
+test('AI ron takes priority over the human pon prompt', () => {
+  const session = new SanmaGameSession({ speed: 0 });
+  const winningHand = [12, 13, 14, 21, 22, 23, 15, 16, 17, 33, 33, 33, 32];
+  session.state = {
+    ...session.state,
+    phase: 'respond',
+    lastDiscard: 32,
+    lastDiscardPlayer: 1,
+    players: session.state.players.map((player, index) => ({
+      ...player,
+      hand: index === 0 ? [32, 32, ...player.hand.slice(2)] : index === 2 ? winningHand : player.hand,
+      discards: index === 1 ? [{ tile: 32, tsumogiri: false }] : []
+    }))
+  };
+  session.handleResponses();
+  assert.equal(session.human.pending, null);
+  assert.equal(session.state.phase, 'ron_win');
+  assert.equal(session.lastResult.winners[0].winner, 2);
+  session.stop();
+});
+
+test('sanma yakuman pao splits ron liability between discarder and responsible player', () => {
+  const state = createGame({ playerCount: 3 });
+  const daisangen = [9, 10, 11, 27, 31, 31, 31, 32, 32, 32, 33, 33, 33];
+  const configured = {
+    ...state,
+    phase: 'respond',
+    lastDiscard: 27,
+    lastDiscardPlayer: 0,
+    paoTarget: 2,
+    players: state.players.map((player, index) => ({
+      ...player,
+      hand: index === 1 ? daisangen : player.hand,
+      score: 35000,
+      discards: index === 0 ? [{ tile: 27, tsumogiri: false }] : []
+    }))
+  };
+  const result = settleSanmaRon(configured, [1]);
+  assert.equal(result.details[0].pao, 2);
+  assert.ok(result.state.players[0].score < 35000);
+  assert.ok(result.state.players[2].score < 35000);
+  assert.equal(result.state.players.reduce((sum, player) => sum + player.score, 0), 105000);
+});
+
+test('sanma yakuman pao charges the responsible player for the full tsumo', () => {
+  const winningHand = [9, 10, 11, 27, 27, 31, 31, 31, 32, 32, 32, 33, 33, 33];
+  let state = createGame({ playerCount: 3, startDealer: 1 });
+  state = {
+    ...state,
+    phase: 'discard',
+    currentPlayer: 0,
+    lastDrawnTile: 27,
+    paoTarget: 2,
+    turnCount: 4,
+    players: state.players.map((player, index) => ({
+      ...player,
+      hand: index === 0 ? winningHand : player.hand,
+      score: 35000
+    }))
+  };
+  const result = applyAction(state, { kind: ActionKind.Tsumo });
+  assert.equal(result.phase, 'tsumo_win');
+  assert.equal(result.players[1].score, 35000, 'non-responsible dealer pays nothing');
+  assert.ok(result.players[2].score < 35000, 'pao player covers both normal shares');
+  assert.equal(result.players.reduce((sum, player) => sum + player.score, 0), 105000);
+});
+
+test('south-three supports agari-yame and west extension below the return score', () => {
+  const base = createGame({ playerCount: 3, endRound: 8 });
+  const dealerWin = {
+    ...base,
+    phase: 'tsumo_win',
+    dealer: 0,
+    currentPlayer: 0,
+    roundWind: 1,
+    roundNumber: 6,
+    players: base.players.map((player, index) => ({ ...player, score: [41000, 33000, 31000][index] }))
+  };
+  assert.equal(nextRound(dealerWin).phase, 'game_over');
+
+  const childWin = {
+    ...dealerWin,
+    currentPlayer: 1,
+    players: base.players.map((player, index) => ({ ...player, score: [39000, 36000, 30000][index] }))
+  };
+  const extension = nextRound(childWin);
+  assert.equal(extension.phase, 'draw');
+  assert.equal(extension.roundNumber, 7);
+  assert.equal(extension.roundWind, 2);
 });
 
 test('kokushi may rob a concealed kan in sanma', () => {
@@ -106,6 +317,66 @@ test('nine terminals and honors is exposed on the first draw', () => {
   session.stop();
 });
 
+test('abortive nine-terminals draw does not apply exhaustive-draw noten payments', () => {
+  const state = createGame({ playerCount: 3 });
+  const before = state.players.map(player => player.score);
+  const result = applyAction({ ...state, phase: 'discard' }, { kind: ActionKind.Kyushukyuhai });
+  assert.equal(result.phase, 'ryukyoku');
+  assert.equal(result.ryukyokuReason, 'kyushukyuhai');
+  assert.deepEqual(result.players.map(player => player.score), before);
+  const continued = nextRound(result);
+  assert.equal(continued.dealer, state.dealer);
+  assert.equal(continued.roundNumber, state.roundNumber);
+  assert.equal(continued.honba, state.honba + 1);
+});
+
+test('riichi player may ankan only when the drawn tile preserves the wait', () => {
+  const session = new SanmaGameSession({ speed: 0 });
+  session.state = {
+    ...session.state,
+    currentPlayer: 0,
+    phase: 'discard',
+    lastDrawnTile: 9,
+    players: session.state.players.map((player, index) => index === 0 ? {
+      ...player,
+      riichi: true,
+      hand: [9, 9, 9, 9, 18, 19, 20, 21, 22, 23, 27, 27, 27, 28]
+    } : player)
+  };
+  session.handleDiscardTurn();
+  assert.ok(session.human.pending.options.gang.includes('ankan:9'));
+  session.stop();
+});
+
+test('kita is blocked immediately after pon and riichi may extract only a drawn North', () => {
+  const session = new SanmaGameSession({ speed: 0 });
+  const northHand = [9, 10, 11, 18, 19, 20, 21, 22, 23, 27, 27, 31, 31, 30];
+  session.state = {
+    ...session.state,
+    currentPlayer: 0,
+    phase: 'discard',
+    lastDrawnTile: null,
+    players: session.state.players.map((player, index) => index === 0
+      ? { ...player, hand: northHand, melds: [{ type: 'pon', tiles: [32, 32, 32], calledFrom: 1 }], isMenzen: false }
+      : player)
+  };
+  session.handleDiscardTurn();
+  assert.equal(session.human.pending.options.kita, false);
+  session.human.pending = null;
+
+  session.state = {
+    ...session.state,
+    phase: 'discard',
+    lastDrawnTile: 9,
+    players: session.state.players.map((player, index) => index === 0
+      ? { ...player, hand: northHand, melds: [], isMenzen: true, riichi: true }
+      : player)
+  };
+  session.handleDiscardTurn();
+  assert.equal(session.human.pending.options.kita, false);
+  session.stop();
+});
+
 test('nagashi mangan replaces noten payments at exhaustive draw', () => {
   const session = new SanmaGameSession({ speed: 0 });
   session.state = {
@@ -123,6 +394,54 @@ test('nagashi mangan replaces noten payments at exhaustive draw', () => {
   assert.equal(session.state.phase, 'tsumo_win');
   assert.ok(session.state.players[0].score > 35000);
   session.stop();
+});
+
+test('a called terminal is removed from the river and disqualifies nagashi mangan', () => {
+  let state = createGame({ playerCount: 3 });
+  state = {
+    ...state,
+    phase: 'respond',
+    lastDiscard: 0,
+    lastDiscardPlayer: 0,
+    players: state.players.map((player, index) => ({
+      ...player,
+      hand: index === 1 ? [0, 0, 0, ...player.hand.slice(3)] : player.hand,
+      discards: index === 0 ? [{ tile: 0, tsumogiri: false }] : [],
+      nagashiEligible: true
+    }))
+  };
+  state = applyAction(state, { kind: ActionKind.Daiminkan, called: 0, actor: 1 });
+  assert.equal(state.players[0].discards.length, 0);
+  assert.equal(state.players[0].nagashiEligible, false);
+});
+
+test('regular and red five are separate discard choices and preserve red metadata', () => {
+  const base = createGame({ playerCount: 3 });
+  const hand = [9, 10, 11, 12, 13, 13, 14, 18, 19, 20, 27, 27, 28, 29];
+  const state = {
+    ...base,
+    phase: 'discard',
+    currentPlayer: 0,
+    lastDrawnTile: 29,
+    lastDrawnAka: false,
+    players: base.players.map((player, index) => index === 0 ? {
+      ...player,
+      hand,
+      akaInHand: [13],
+      akaInMelds: [],
+      akaCount: 1
+    } : player)
+  };
+  const choices = getValidActions(state).filter(action => action.kind === ActionKind.Discard && action.tile === 13);
+  assert.deepEqual(choices.map(action => Boolean(action.aka)), [false, true]);
+
+  const regular = applyAction(state, choices.find(action => !action.aka));
+  assert.equal(regular.players[0].akaCount, 1);
+  assert.equal(regular.players[0].discards.at(-1).aka, false);
+
+  const red = applyAction(state, choices.find(action => action.aka));
+  assert.equal(red.players[0].akaCount, 0);
+  assert.equal(red.players[0].discards.at(-1).aka, true);
 });
 
 test('sanma human decisions can drive a complete hanchan', { timeout: 30000 }, async () => {

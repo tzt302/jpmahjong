@@ -87,13 +87,13 @@ async function animateWallDraw(player) {
   wall?.classList.remove('drawing');
 }
 
-async function animateAiDiscard(player, tile) {
+async function animateAiDiscard(player, tile, red = false) {
   const plaque = $({ 1: '.plaque-right', 2: '.plaque-top', 3: '.plaque-left' }[player]);
   const wall = $({ 1: '#wallRight', 2: '#wallTop', 3: '#wallLeft' }[player]);
   const plaqueRect = plaque.getBoundingClientRect();
   const sourceRect = plaqueRect.width ? plaqueRect : wall.getBoundingClientRect();
   const startRect = { left: sourceRect.left + sourceRect.width / 2 - 22, top: sourceRect.top + sourceRect.height / 2 - 30, width: 44, height: 61 };
-  await flyTile(tileFaceMarkup(tile), startRect, player);
+  await flyTile(tileFaceMarkup(tile, red), startRect, player);
 }
 
 function route(name) {
@@ -164,14 +164,14 @@ function renderGame() {
       plaque.querySelector('span').textContent = ['你', '竹林の道', '静寂の庭', '月下の牌'][seat.playerId] + (seat.kitaCount ? ` · 北×${seat.kitaCount}` : '');
       plaque.querySelector('strong').textContent = seat.score.toLocaleString('zh-CN');
     }
-    $(`#river${seat.position}`).innerHTML = seat.river.map((tile, index) => `<span class="river-tile ${tile.riichi ? 'riichi' : ''} ${tile.claimed ? 'claimed' : ''} ${seat.position === lastDiscardPlayer && index === seat.river.length - 1 ? 'land' : ''}">${tileFaceMarkup(tile.tile)}</span>`).join('');
+    $(`#river${seat.position}`).innerHTML = seat.river.map((tile, index) => `<span class="river-tile ${tile.red ? 'red-five' : ''} ${tile.riichi ? 'riichi' : ''} ${tile.claimed ? 'claimed' : ''} ${seat.position === lastDiscardPlayer && index === seat.river.length - 1 ? 'land' : ''}">${tileFaceMarkup(tile.tile, tile.red)}</span>`).join('');
   });
   $('#seatList').innerHTML = snapshot.seats.map(seat => `<li class="${seat.position === snapshot.currentPosition ? 'current' : ''}"><b>${seat.human ? '你' : ['你', '竹林', '静寂', '月下'][seat.playerId]} · ${seat.windLabel}家${seat.kitaCount ? ` · 北×${seat.kitaCount}` : ''}</b><span>${seat.score.toLocaleString('zh-CN')} 点</span></li>`).join('');
   $('#doraTile').innerHTML = snapshot.doraIndicators.map(tile => `<span>${tileFaceMarkup(tile.tile)}</span>`).join('');
   const humanSeat = snapshot.seats[0];
-  $('#meldArea').innerHTML = humanSeat.melds.map(meld => `<span class="meld-group">${meld.tiles.map(tile => `<i>${tileFaceMarkup(tile.tile)}</i>`).join('')}</span>`).join('');
+  $('#meldArea').innerHTML = humanSeat.melds.map(meld => `<span class="meld-group">${meld.tiles.map(tile => `<i>${tileFaceMarkup(tile.tile, tile.red)}</i>`).join('')}</span>`).join('');
   $('#hand').classList.toggle('waiting', !discardTurn);
-  $('#hand').innerHTML = snapshot.hand.map((item, index) => `<button class="tile ${item.drawn ? 'drawn' : ''} ${item.red ? 'red-five' : ''}" data-index="${index}" data-code="${item.code}" data-tile="${item.tile}" data-drawn="${item.drawn}" aria-label="${TILE_LABELS[item.tile]}">${tileFaceMarkup(item.tile)}</button>`).join('');
+  $('#hand').innerHTML = snapshot.hand.map((item, index) => `<button class="tile ${item.drawn ? 'drawn' : ''} ${item.red ? 'red-five' : ''}" data-index="${index}" data-code="${item.code}" data-tile="${item.tile}" data-red="${item.red}" data-drawn="${item.drawn}" aria-label="${TILE_LABELS[item.tile]}">${tileFaceMarkup(item.tile, item.red)}</button>`).join('');
 
   const calls = pending?.options?.fulou || [];
   $('#chiButton').disabled = !calls.some(meld => meldType(meld) === 'chi');
@@ -202,8 +202,10 @@ function bindHand() {
     const code = tile.dataset.code;
     const drawn = tile.dataset.drawn === 'true';
     const legal = pending.options.dapai || [];
-    let discardCode = legal.find(option => option.slice(0, 2) === code && option.includes('_') === drawn)
-      || legal.find(option => option.slice(0, 2) === code);
+    let discardCode = game.mode === 'sanma'
+      ? legal.find(option => option === code)
+      : legal.find(option => option.slice(0, 2) === code && option.includes('_') === drawn)
+        || legal.find(option => option.slice(0, 2) === code);
     if (!discardCode) return;
     if (riichiArmed) {
       if (!pending.options.riichi.includes(discardCode)) return;
@@ -211,7 +213,7 @@ function bindHand() {
     }
     botBusy = true;
     tile.classList.add('discarding');
-    await flyTile(tileFaceMarkup(Number(tile.dataset.tile)), tile.getBoundingClientRect(), 0).catch(() => {});
+    await flyTile(tileFaceMarkup(Number(tile.dataset.tile), tile.dataset.red === 'true'), tile.getBoundingClientRect(), 0).catch(() => {});
     game.submit({ dapai: discardCode });
     lastDiscardPlayer = 0;
     riichiArmed = false;
@@ -255,9 +257,10 @@ function choiceMarkup(code) {
   if (code.includes(':')) {
     const [kind, value] = code.split(':');
     const count = kind === 'pon' ? 3 : 4;
-    return tileFaceMarkup(Number(value)).repeat(count);
+    const red = value.endsWith('r');
+    return tileFaceMarkup(Number(value.replace('r', '')), red).repeat(count);
   }
-  return meldTiles(code).map(tile => tileFaceMarkup(tile.tile)).join('');
+  return meldTiles(code).map(tile => tileFaceMarkup(tile.tile, tile.red)).join('');
 }
 
 $('#chiButton').addEventListener('click', () => useCall('chi'));
@@ -283,7 +286,7 @@ async function handleCoreEvent(event) {
     lastDiscardPlayer = actorPosition ?? null;
     if (actorPosition > 0) {
       const tile = game.mode === 'sanma' ? event.payload.p : coreTileToNumber(event.payload.p);
-      await animateAiDiscard(actorPosition, tile);
+      await animateAiDiscard(actorPosition, tile, Boolean(event.payload.action?.aka));
     }
     playTileSound();
   }
@@ -308,10 +311,11 @@ function handleDecision(decision) {
 function showSanmaResult(result) {
   const winner = result.winners[0];
   const yaku = (winner.yakuList || winner.yaku || []).map(item => item.name).join(' · ');
+  const dora = winner.doraCount ? ` · 宝牌×${winner.doraCount}` : '';
   const title = result.type === 'nagashi' ? '流し満貫'
     : result.type === 'tsumo' ? `${WIND_LABELS[(winner.winner + 3 - game.state.dealer) % 3]}家 自摸`
     : `${result.winners.length > 1 ? '双响' : '荣和'}`;
-  showResult(title, `${yaku || '和牌'}　${winner.fu || 0}符 ${winner.totalHan || winner.han || 0}番`);
+  showResult(title, `${yaku || '和牌'}${dora}　${winner.fu || 0}符 ${winner.totalHan || winner.han || 0}番`);
 }
 
 function showHuleResult(result) {

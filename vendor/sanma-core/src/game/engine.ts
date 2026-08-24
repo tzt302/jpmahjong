@@ -4,6 +4,7 @@ import { createWall, dealHaipai, drawTile, drawRinshan, getDoraMarkers, type Wal
 import { calculateShanten } from './shanten'
 import { isWinningHand } from './hand-analysis'
 import { evaluateWin, previewWin } from './win-evaluation'
+import { calculatePoints } from './scoring'
 import { MjaiEmitter } from '../ai/mjai/emit'
 import type { MjaiEvent } from '../ai/mjai/types'
 import {
@@ -52,7 +53,7 @@ export function createGame(opts: CreateGameOptions = {}): GameState {
     ? (requested === 4 ? 3 : requested === 8 ? 6 : requested)
     : requested
   const wall = opts.fixedWall
-    ? { tiles: opts.fixedWall, drawIndex: 0, rinshanIndex: opts.fixedWall.length, doraCount: 1, akaPositions: new Set<number>() }
+    ? { tiles: opts.fixedWall, drawIndex: 0, rinshanIndex: opts.fixedWall.length - 1, doraCount: 1, akaPositions: new Set<number>(), playerCount }
     : createWall(playerCount)
   const { hands, akaInHand } = opts.fixedHands
     ? { hands: opts.fixedHands, akaInHand: opts.fixedAka ?? opts.fixedHands.map(() => [] as TileType[]) }
@@ -73,6 +74,9 @@ export function createGame(opts: CreateGameOptions = {}): GameState {
     akaCount: akaInHand[idx]!.length,
     akaInHand: akaInHand[idx]!.slice(),
     akaInMelds: [],
+    daburii: false,
+    ippatsuEligible: false,
+    nagashiEligible: true,
   })
 
   return {
@@ -95,6 +99,7 @@ export function createGame(opts: CreateGameOptions = {}): GameState {
     lastDiscard: null,
     lastDiscardPlayer: null,
     lastDrawnTile: null,
+    lastDrawnAka: false,
     ippatsu: false,
     koyakuMode: opts.koyakuMode ?? false,
     sanwahou: opts.sanwahou ?? false,
@@ -109,6 +114,7 @@ function getWall(state: GameState): Wall {
     rinshanIndex: state.rinshanIndex,
     doraCount: state.doraMarkers.length,
     akaPositions: state.akaPositions ?? new Set<number>(),
+    playerCount: state.playerCount,
   }
 }
 
@@ -131,6 +137,7 @@ function discardAkaTransition(
   tile: TileType,
   // hand state AFTER the tile was already physically removed (used for counting)
   handAfter: TileType[],
+  forceAka = false,
 ): { player: PlayerState; akaDiscarded: boolean } {
   if (!AKA_KIND.has(tile) || !(p.akaInHand?.includes(tile))) {
     return { player: p, akaDiscarded: false }
@@ -140,7 +147,7 @@ function discardAkaTransition(
   // for this tile is 1 (each tile has only one aka). If pre-discard
   // count > 1, regular still around → discard regular; aka stays.
   const remaining = handAfter.filter(t => t === tile).length
-  if (remaining >= 1) {
+  if (!forceAka && remaining >= 1) {
     return { player: p, akaDiscarded: false }
   }
   // No copies left → the aka was discarded.
@@ -186,6 +193,41 @@ function meldAkaTransition(
   }
 }
 
+function waitsOf(hand: TileType[], playerCount: 3 | 4): TileType[] {
+  const waits: TileType[] = []
+  for (let t = 0 as TileType; t < 34; t = (t + 1) as TileType) {
+    if (playerCount === 3 && t >= 1 && t <= 7) continue
+    if (hand.filter(x => x === t).length >= 4) continue
+    if (isWinningHand([...hand, t])) waits.push(t)
+  }
+  return waits
+}
+
+function isLegalRiichiAnkan(state: GameState, tile: TileType): boolean {
+  const player = state.players[state.currentPlayer]
+  if (!player.riichi || state.lastDrawnTile !== tile) return false
+  if (player.hand.filter(t => t === tile).length !== 4) return false
+  const before = [...player.hand]
+  before.splice(before.lastIndexOf(tile), 1)
+  const after = player.hand.filter(t => t !== tile)
+  return waitsOf(before, state.playerCount).join(',') === waitsOf(after, state.playerCount).join(',')
+}
+
+function discardVariants(
+  player: PlayerState,
+  kind: typeof ActionKind.Discard | typeof ActionKind.Riichi,
+  tile: TileType,
+): Action[] {
+  const hasAka = (player.akaInHand ?? []).includes(tile)
+  if (!hasAka) return [{ kind, tile } as Action]
+  const copies = player.hand.filter(t => t === tile).length
+  if (copies > 1) return [
+    { kind, tile, aka: false } as Action,
+    { kind, tile, aka: true } as Action,
+  ]
+  return [{ kind, tile, aka: true } as Action]
+}
+
 export function getValidActions(state: GameState): Action[] {
   const actions: Action[] = []
 
@@ -197,12 +239,14 @@ export function getValidActions(state: GameState): Action[] {
 
     case 'discard': {
       const player = state.players[state.currentPlayer]
-      const uniqueTiles = [...new Set(player.hand)]
+      const uniqueTiles = player.riichi && state.lastDrawnTile != null
+        ? [state.lastDrawnTile]
+        : [...new Set(player.hand)]
       const forbidden = new Set(state.kuikae ?? [])
 
       for (const t of uniqueTiles) {
         if (!forbidden.has(t)) {
-          actions.push({ kind: ActionKind.Discard, tile: t })
+          actions.push(...discardVariants(player, ActionKind.Discard, t))
         }
       }
 
@@ -224,22 +268,25 @@ export function getValidActions(state: GameState): Action[] {
           const idx = remaining.indexOf(t)
           remaining.splice(idx, 1)
           if (calculateShanten(remaining, player.melds.length) === 0) {
-            actions.push({ kind: ActionKind.Riichi, tile: t })
+            actions.push(...discardVariants(player, ActionKind.Riichi, t))
           }
         }
       }
 
       // Ankan
       for (const t of uniqueTiles) {
-        if (player.hand.filter(x => x === t).length === 4) {
+        if (player.hand.filter(x => x === t).length === 4
+            && (!player.riichi || isLegalRiichiAnkan(state, t))) {
           actions.push({ kind: ActionKind.Ankan, tile: t })
         }
       }
 
       // Kakan
-      for (const meld of player.melds) {
-        if (meld.type === 'pon' && player.hand.includes(meld.tiles[0])) {
-          actions.push({ kind: ActionKind.Kakan, tile: meld.tiles[0] })
+      if (!player.riichi) {
+        for (const meld of player.melds) {
+          if (meld.type === 'pon' && player.hand.includes(meld.tiles[0])) {
+            actions.push({ kind: ActionKind.Kakan, tile: meld.tiles[0] })
+          }
         }
       }
 
@@ -268,7 +315,8 @@ export function getValidActions(state: GameState): Action[] {
       // Sanma 抜き北: if the player holds any North in hand during their
       // discard phase, they can declare kita as a free dora boost. Allowed
       // even after riichi (kita doesn't change the hand structure).
-      if (state.playerCount === 3 && player.hand.includes(30)) {
+      if (state.playerCount === 3 && state.lastDrawnTile != null && player.hand.includes(30)
+          && (!player.riichi || state.lastDrawnTile === 30)) {
         actions.push({ kind: ActionKind.Kita })
       }
       break
@@ -552,12 +600,16 @@ export function applyAction(state: GameState, action: Action): GameState {
     case ActionKind.Daiminkan:
       return applyDaiminkan(state, action)
     case ActionKind.Kyushukyuhai:
-      return applyRyukyokuTenpaiPayments({ ...state, phase: 'ryukyoku' })
+      return { ...state, phase: 'ryukyoku', ryukyokuReason: 'kyushukyuhai' }
     case ActionKind.Kita:
       // Sanma manual kita: transition to kita_declare phase. The 北 stays in
       // hand so chankita responders can simulate winning on it; resolveKita
       // removes it and draws a rinshan replacement after the chankita check.
-      return { ...state, phase: 'kita_declare' }
+      return {
+        ...state,
+        players: state.players.map(p => ({ ...p, ippatsuEligible: false })),
+        phase: 'kita_declare',
+      }
     default:
       console.warn(`engine: applyAction — unknown action kind: ${(action as Action).kind}`)
       return state
@@ -569,29 +621,25 @@ function applyPass(state: GameState): GameState {
     return advanceToDraw(state, state.currentPlayer)
   }
   if (state.phase === 'respond') {
-    // Chankan respond resolved with no ron: return to the kaker's discard
-    // phase, keeping the rinshan-drawn tile already in hand. No wall draw.
+    // Chankan response resolved with no ron: only now complete the kan,
+    // reveal its dora and draw the replacement tile. A robbed kakan must
+    // never consume a rinshan tile or expose an extra indicator.
     if (state.chankan) {
-      return {
-        ...state,
-        phase: 'discard',
-        currentPlayer: state.chankan.kaker,
-        chankan: null,
-      }
+      return completeKakanDraw(state)
     }
     // 四開槓: 4 kans from 2+ players, and the kan player has now discarded
     // without anyone claiming ron → abortive draw. Must check BEFORE
     // advancing to next player's draw.
     if (isSuuKaiKan(state.players)) {
-      return applyRyukyokuTenpaiPayments({ ...state, phase: 'ryukyoku' })
+      return { ...state, phase: 'ryukyoku', ryukyokuReason: 'suukaikan' }
     }
     // 四風連打: first orbit, no calls, all 4 discards are the same wind
     if (isSuuFuuRenda(state)) {
-      return applyRyukyokuTenpaiPayments({ ...state, phase: 'ryukyoku' })
+      return { ...state, phase: 'ryukyoku', ryukyokuReason: 'suufonrenda' }
     }
     // 三家家: 3 players can ron on this discard
     if (state.sanwahou && isSanwahou(state)) {
-      return applyRyukyokuTenpaiPayments({ ...state, phase: 'ryukyoku' })
+      return { ...state, phase: 'ryukyoku', ryukyokuReason: 'sanwahou' }
     }
     const nextPlayer = ((state.lastDiscardPlayer! as number) + 1) % state.playerCount as Player
     return advanceToDraw(state, nextPlayer)
@@ -617,11 +665,11 @@ function resolveKita(state: GameState): GameState {
     const idx = hand.indexOf(30)
     if (idx !== -1) hand.splice(idx, 1)
     return { ...p, hand, kitaCount: p.kitaCount + 1 }
-  }) as GameState['players']
+  }).map(p => ({ ...p, ippatsuEligible: false })) as GameState['players']
 
   const wall = getWall({ ...state, players })
   const result = drawRinshan(wall)
-  if (!result) return applyRyukyokuTenpaiPayments({ ...state, players, phase: 'ryukyoku' })
+  if (!result) return applyRyukyokuTenpaiPayments({ ...state, players, phase: 'ryukyoku', ryukyokuReason: 'exhaustive' })
 
   const playersWithDraw = players.map((p, i) => {
     if (i !== player) return p
@@ -642,6 +690,7 @@ function resolveKita(state: GameState): GameState {
     // Nuki draws a dead-wall replacement but does not reveal kan dora.
     doraMarkers: state.doraMarkers,
     lastDrawnTile: result.tile,
+    lastDrawnAka: result.aka,
     phase: result.tile === 30 ? 'kita_declare' : 'discard',
   }
   return newState
@@ -650,7 +699,7 @@ function resolveKita(state: GameState): GameState {
 function advanceToDraw(state: GameState, player: Player): GameState {
   const wall = getWall(state)
   const result = drawTile(wall)
-  if (!result) return applyRyukyokuTenpaiPayments({ ...state, phase: 'ryukyoku' })
+  if (!result) return applyRyukyokuTenpaiPayments({ ...state, phase: 'ryukyoku', ryukyokuReason: 'exhaustive' })
 
   const players = state.players.map((p, i) => {
     if (i !== player) return p
@@ -679,10 +728,11 @@ function advanceToDraw(state: GameState, player: Player): GameState {
     lastDiscard: null,
     lastDiscardPlayer: null,
     lastDrawnTile: result.tile,
+    lastDrawnAka: result.aka,
   }
 }
 
-function applyDiscard(state: GameState, action: { tile: TileType }): GameState {
+function applyDiscard(state: GameState, action: { tile: TileType; aka?: boolean }): GameState {
   const tsumogiri = action.tile === state.lastDrawnTile
   const players = state.players.map((p, i) => {
     if (i !== state.currentPlayer) return p
@@ -692,9 +742,26 @@ function applyDiscard(state: GameState, action: { tile: TileType }): GameState {
     const withDiscard: PlayerState = {
       ...p,
       hand,
-      discards: [...p.discards, { tile: action.tile, tsumogiri }],
+      discards: [...p.discards, {
+        tile: action.tile,
+        tsumogiri,
+        riichi: p.riichi && p.riichiTurn === state.turnCount,
+      }],
+      // The declaration discard itself keeps ippatsu alive. It expires on
+      // this player's next discard if nobody called in between.
+      ippatsuEligible: p.ippatsuEligible && p.riichiTurn < state.turnCount
+        ? false
+        : p.ippatsuEligible,
+      nagashiEligible: p.nagashiEligible !== false
+        && (action.tile >= 27 || [0, 8, 9, 17, 18, 26].includes(action.tile)),
     }
-    return discardAkaTransition(withDiscard, action.tile, hand).player
+    const transitioned = discardAkaTransition(withDiscard, action.tile, hand, action.aka === true)
+    const discards = [...transitioned.player.discards]
+    discards[discards.length - 1] = {
+      ...discards[discards.length - 1],
+      aka: transitioned.akaDiscarded,
+    }
+    return { ...transitioned.player, discards }
   }) as GameState['players']
 
   return {
@@ -768,7 +835,12 @@ export function applyTsumo(state: GameState): GameState {
   const isDealerWin = winner === state.dealer
   const honbaPay = HONBA_TSUMO * state.honba
   const newScores = state.players.map(p => p.score)
-  const pao = state.paoTarget != null && evalResult.isYakuman ? state.paoTarget : null
+  const hasPaoYaku = evalResult.yakuList.some(y => y.name === 'daisangen' || y.name === 'daisuushii')
+  const pao = state.paoTarget != null && hasPaoYaku ? state.paoTarget : null
+  const paoScore = pao == null ? null : calculatePoints({
+    han: 13, fu: 0, isDealer: isDealerWin, isTsumo: true, playerCount: state.playerCount,
+  })
+  let paoCharge = 0
 
   let totalCollected = 0
   for (let i = 0; i < state.playerCount; i++) {
@@ -781,21 +853,22 @@ export function applyTsumo(state: GameState): GameState {
         ? evalResult.scoreResult.tsumoDealerPays
         : evalResult.scoreResult.tsumoChild
     }
+    const basePay = pay
     pay += honbaPay
     if (pao != null) {
-      // Pao: the pao target pays for everyone. Non-pao non-winner players pay 0.
-      if (i === pao) {
-        // Accumulate total that everyone would pay
-        totalCollected += pay
-      }
-      // Don't deduct from other players yet — we'll deduct total from pao target
+      const paoShare = isDealerWin
+        ? paoScore!.tsumoDealer
+        : i === state.dealer ? paoScore!.tsumoDealerPays : paoScore!.tsumoChild
+      newScores[i] -= basePay - paoShare
+      paoCharge += paoShare + honbaPay
+      totalCollected += pay
     } else {
       newScores[i] -= pay
       totalCollected += pay
     }
   }
   if (pao != null) {
-    newScores[pao] -= totalCollected
+    newScores[pao] -= paoCharge
   }
   newScores[winner] += totalCollected + state.kyotaku * KYOTAKU_VALUE
 
@@ -859,15 +932,20 @@ function applyRon(state: GameState, action: { called: TileType }): GameState {
   }
 
   const honbaPay = HONBA_RON * state.honba
-  const pao = state.paoTarget != null && evalResult.isYakuman ? state.paoTarget : null
+  const hasPaoYaku = evalResult.yakuList.some(y => y.name === 'daisangen' || y.name === 'daisuushii')
+  const pao = state.paoTarget != null && hasPaoYaku ? state.paoTarget : null
 
   const newScores = state.players.map(p => p.score)
   if (pao != null) {
-    // Pao for ron: pao target and discarder split the base payment.
-    // Pao target pays basePayment/2 + honba, loser pays basePayment/2.
-    const halfBase = Math.floor(evalResult.scoreResult.ronPayment / 2)
-    newScores[pao] -= (evalResult.scoreResult.ronPayment - halfBase + honbaPay)
-    newScores[loser] -= halfBase
+    // Only the responsible yakuman portion is split. Any stacked yakuman
+    // unrelated to pao remains entirely the discarder’s liability.
+    const paoPayment = calculatePoints({
+      han: 13, fu: 0, isDealer: winner === state.dealer, isTsumo: false,
+      playerCount: state.playerCount,
+    }).ronPayment
+    const paoShare = Math.floor(paoPayment / 2)
+    newScores[pao] -= paoPayment - paoShare + honbaPay
+    newScores[loser] -= evalResult.scoreResult.ronPayment - (paoPayment - paoShare)
   } else {
     const totalFromLoser = evalResult.scoreResult.ronPayment + honbaPay
     newScores[loser] -= totalFromLoser
@@ -914,14 +992,14 @@ function applyPon(state: GameState, action: { called: TileType; actor?: Player }
           isMenzen: false,
         }
         return meldAkaTransition(withMeld, consumed, hand)
-      }) as GameState['players']
+      }).map(pl => ({ ...pl, ippatsuEligible: false })) as GameState['players']
 
       // Remove from discarder's discards
       const discarderPlayers = players.map((pl, i) => {
         if (i !== discardedBy) return pl
         const discards = [...pl.discards]
         discards.pop()
-        return { ...pl, discards }
+        return { ...pl, discards, nagashiEligible: false }
       }) as GameState['players']
 
       // Check if this pon triggers pao (包牌)
@@ -935,6 +1013,7 @@ function applyPon(state: GameState, action: { called: TileType; actor?: Player }
         lastDiscard: null,
         lastDiscardPlayer: null,
         lastDrawnTile: null,
+        lastDrawnAka: false,
         paoTarget,
         kuikae: [action.called],
       }
@@ -1004,7 +1083,7 @@ function applyChi(state: GameState, action: { tiles: [TileType, TileType]; calle
       }
     }
     return result
-  }) as GameState['players']
+  }).map(p => ({ ...p, ippatsuEligible: false })) as GameState['players']
 
   // Remove from discarder's discards
   const discardedBy = state.lastDiscardPlayer!
@@ -1012,7 +1091,7 @@ function applyChi(state: GameState, action: { tiles: [TileType, TileType]; calle
     if (i !== discardedBy) return pl
     const discards = [...pl.discards]
     discards.pop()
-    return { ...pl, discards }
+    return { ...pl, discards, nagashiEligible: false }
   }) as GameState['players']
 
   return {
@@ -1023,11 +1102,12 @@ function applyChi(state: GameState, action: { tiles: [TileType, TileType]; calle
     lastDiscard: null,
     lastDiscardPlayer: null,
     lastDrawnTile: null,
+    lastDrawnAka: false,
     kuikae: chiKuikae(action.tiles, action.called),
   }
 }
 
-function applyRiichi(state: GameState, action: { tile: TileType }): GameState {
+function applyRiichi(state: GameState, action: { tile: TileType; aka?: boolean }): GameState {
   // Daburii (W立直) eligibility is locked AT declaration: still in the first
   // orbit (turnCount <= playerCount) and no chi/pon/kan has happened
   // anywhere yet (every player still has zero melds — meld count covers
@@ -1035,7 +1115,8 @@ function applyRiichi(state: GameState, action: { tile: TileType }): GameState {
   // does NOT get cancelled by later calls in the same hand.
   const daburiiEligible =
     state.turnCount <= state.playerCount &&
-    state.players.every(p => p.melds.length === 0)
+    state.players.every(p => p.melds.length === 0) &&
+    (state.playerCount !== 3 || state.players.every(p => p.kitaCount === 0))
   const players = state.players.map((p, i) => {
     if (i !== state.currentPlayer) return p
     return {
@@ -1044,6 +1125,7 @@ function applyRiichi(state: GameState, action: { tile: TileType }): GameState {
       riichiTurn: state.turnCount,
       score: p.score - 1000,
       daburii: daburiiEligible,
+      ippatsuEligible: true,
     }
   }) as GameState['players']
 
@@ -1055,7 +1137,7 @@ function applyRiichi(state: GameState, action: { tile: TileType }): GameState {
     return finalizeGame({ ...state, players, kyotaku: state.kyotaku + 1 })
   }
 
-  const discardState = applyDiscard({ ...state, players }, { tile: action.tile })
+  const discardState = applyDiscard({ ...state, players }, action)
   return { ...discardState, kyotaku: state.kyotaku + 1 }
 }
 
@@ -1081,7 +1163,7 @@ function applyAnkan(state: GameState, action: { tile: TileType }): GameState {
       akaInHand: (p.akaInHand ?? []).filter(t => t !== action.tile),
       akaInMelds: hadAkaOfTile ? [...(p.akaInMelds ?? []), action.tile] : (p.akaInMelds ?? []),
     }
-  }) as GameState['players']
+  }).map(p => ({ ...p, ippatsuEligible: false })) as GameState['players']
 
   const wall = getWall({ ...state, players })
   const result = drawRinshan(wall)
@@ -1106,6 +1188,7 @@ function applyAnkan(state: GameState, action: { tile: TileType }): GameState {
     doraMarkers: getDoraMarkers(result.wall),
     phase: 'discard',
     lastDrawnTile: result.tile,
+    lastDrawnAka: result.aka,
     atRinshan: true,
   }
 }
@@ -1125,37 +1208,43 @@ function applyKakan(state: GameState, action: { tile: TileType }): GameState {
     // meld. If it was the aka copy, transfer it.
     const withMeld: PlayerState = { ...p, hand, melds }
     return meldAkaTransition(withMeld, [action.tile], hand)
-  }) as GameState['players']
-
-  const wall = getWall({ ...state, players })
-  const result = drawRinshan(wall)
-  if (!result) return { ...state, players, phase: 'ryukyoku' }
-
-  const playersWithDraw = players.map((p, i) => {
-    if (i !== state.currentPlayer) return p
-    return {
-      ...p,
-      hand: [...p.hand, result.tile].sort((a, b) => a - b),
-      akaInHand: result.aka ? [...(p.akaInHand ?? []), result.tile] : (p.akaInHand ?? []),
-      akaCount: ((p.akaInHand?.length ?? 0) + (result.aka ? 1 : 0)) + (p.akaInMelds?.length ?? 0),
-    }
-  }) as GameState['players']
+  }).map(p => ({ ...p, ippatsuEligible: false })) as GameState['players']
 
   return {
     ...state,
-    players: playersWithDraw,
+    players,
+    // Open the chankan window before touching the dead wall.
+    phase: 'respond',
+    chankan: { tile: action.tile, kaker: state.currentPlayer },
+    lastDrawnTile: null,
+    lastDrawnAka: false,
+    atRinshan: false,
+  }
+}
+
+function completeKakanDraw(state: GameState): GameState {
+  const kaker = state.chankan!.kaker
+  const wall = getWall(state)
+  const result = drawRinshan(wall)
+  if (!result) return { ...state, chankan: null, phase: 'ryukyoku' }
+  const players = state.players.map((p, i) => i !== kaker ? p : {
+    ...p,
+    hand: [...p.hand, result.tile].sort((a, b) => a - b),
+    akaInHand: result.aka ? [...(p.akaInHand ?? []), result.tile] : (p.akaInHand ?? []),
+    akaCount: ((p.akaInHand?.length ?? 0) + (result.aka ? 1 : 0)) + (p.akaInMelds?.length ?? 0),
+  }) as GameState['players']
+  return {
+    ...state,
+    players,
+    currentPlayer: kaker,
     wall: result.wall.tiles,
     wallIndex: result.wall.drawIndex,
     rinshanIndex: result.wall.rinshanIndex,
     doraMarkers: getDoraMarkers(result.wall),
-    // Open the chankan window. Respond machinery uses state.chankan (set
-    // here) to know we're in robbing-the-kan mode, where only Ron is a
-    // legal response and the called tile is `action.tile` (not the stale
-    // lastDiscard). applyPass in chankan mode returns to the kaker's
-    // discard phase without advancing the wall.
-    phase: 'respond',
-    chankan: { tile: action.tile, kaker: state.currentPlayer },
+    chankan: null,
+    phase: 'discard',
     lastDrawnTile: result.tile,
+    lastDrawnAka: result.aka,
     atRinshan: true,
   }
 }
@@ -1188,14 +1277,21 @@ function applyDaiminkan(state: GameState, action: { called: TileType; actor?: Pl
           isMenzen: false,
         }
         return meldAkaTransition(withMeld, consumed, hand)
+      }).map(pl => ({ ...pl, ippatsuEligible: false })) as GameState['players']
+
+      const fixedPlayers = players.map((pl, i) => {
+        if (i !== discardedBy) return pl
+        const discards = [...pl.discards]
+        discards.pop()
+        return { ...pl, discards, nagashiEligible: false }
       }) as GameState['players']
 
       // 四開槓 check moved to applyPass (must wait for discard + no ron)
-      const wall = getWall({ ...state, players, currentPlayer: p })
+      const wall = getWall({ ...state, players: fixedPlayers, currentPlayer: p })
       const result = drawRinshan(wall)
-      if (!result) return { ...state, players, phase: 'ryukyoku' }
+      if (!result) return { ...state, players: fixedPlayers, phase: 'ryukyoku' }
 
-      const playersWithDraw = players.map((pl, i) => {
+      const playersWithDraw = fixedPlayers.map((pl, i) => {
         if (i !== p) return pl
         return {
           ...pl,
@@ -1220,6 +1316,7 @@ function applyDaiminkan(state: GameState, action: { called: TileType; actor?: Pl
         lastDiscard: null,
         lastDiscardPlayer: null,
         lastDrawnTile: result.tile,
+        lastDrawnAka: result.aka,
         atRinshan: true,
         paoTarget,
       }
@@ -1288,41 +1385,52 @@ export function nextRound(state: GameState): GameState {
     return finalizeGame(state)
   }
 
-  // Dealer win (tsumo or ron): dealer stays, honba +1
+  const targetScore = state.playerCount === 3 ? 40000 : 30000
+  const topScore = Math.max(...state.players.map(p => p.score))
+  const dealerIsTop = state.players[state.dealer].score === topScore
+  const inFinalOrExtension = state.roundNumber >= state.endRound
+
+  // Dealer win (tsumo or ron): dealer stays, honba +1. At the scheduled
+  // final hand (or an extension), a leading dealer at the return score may
+  // end the match (agari-yame).
   const isDealerWin = (state.phase === 'tsumo_win' || state.phase === 'ron_win') && state.currentPlayer === state.dealer
   if (isDealerWin) {
+    if (inFinalOrExtension && dealerIsTop && state.players[state.dealer].score >= targetScore) {
+      return finalizeGame(state)
+    }
     return newRound(state, state.dealer, state.roundNumber, state.roundWind, state.honba + 1)
   }
 
   // Ryukyoku: check dealer tenpai
   if (state.phase === 'ryukyoku') {
+    if (state.ryukyokuReason && state.ryukyokuReason !== 'exhaustive') {
+      return newRound(state, state.dealer, state.roundNumber, state.roundWind, state.honba + 1)
+    }
     const dealerTenpai = isPlayerTenpai(state.players[state.dealer])
     if (dealerTenpai) {
-      // Dealer tenpai → renchan, honba +1
+      // Tenpai-yame follows the same final-hand condition as agari-yame.
+      if (inFinalOrExtension && dealerIsTop && state.players[state.dealer].score >= targetScore) {
+        return finalizeGame(state)
+      }
       return newRound(state, state.dealer, state.roundNumber, state.roundWind, state.honba + 1)
     }
     // Dealer noten → dealer rotates, round advances, honba +1
     const newDealer = ((state.dealer as number) + 1) % state.playerCount as Player
     const newRoundNumber = state.roundNumber + 1
-    let newRoundWind: Wind = state.roundWind
-    // East round has 4 hands in yonma, 3 in sanma. South starts at the round
-    // immediately after the last east hand.
     const eastRounds = state.playerCount === 3 ? 3 : 4
-    if (newRoundNumber === eastRounds + 1) newRoundWind = 1
-    if (newRoundNumber > state.endRound) return finalizeGame(state)
+    const maxRound = state.endRound + state.playerCount
+    if (newRoundNumber > state.endRound && (topScore >= targetScore || newRoundNumber > maxRound)) return finalizeGame(state)
+    const newRoundWind = Math.floor((newRoundNumber - 1) / eastRounds) as Wind
     return newRound(state, newDealer, newRoundNumber, newRoundWind, state.honba + 1)
   }
 
   // Child win (tsumo or ron): dealer rotates, honba resets to 0
   const newDealer = ((state.dealer as number) + 1) % state.playerCount as Player
-  let newRoundNumber = state.roundNumber + 1
-  let newRoundWind: Wind = state.roundWind
-
-  // East round has 4 hands in yonma, 3 in sanma. South starts at round
-  // (eastRounds + 1).
+  const newRoundNumber = state.roundNumber + 1
   const eastRounds = state.playerCount === 3 ? 3 : 4
-  if (newRoundNumber === eastRounds + 1) newRoundWind = 1
-  if (newRoundNumber > state.endRound) return finalizeGame(state)
+  const maxRound = state.endRound + state.playerCount
+  if (newRoundNumber > state.endRound && (topScore >= targetScore || newRoundNumber > maxRound)) return finalizeGame(state)
+  const newRoundWind = Math.floor((newRoundNumber - 1) / eastRounds) as Wind
 
   return newRound(state, newDealer, newRoundNumber, newRoundWind, 0)
 }
@@ -1349,6 +1457,9 @@ function newRound(
     akaCount: akaInHand[idx]!.length,
     akaInHand: akaInHand[idx]!.slice(),
     akaInMelds: [],
+    daburii: false,
+    ippatsuEligible: false,
+    nagashiEligible: true,
   })
 
   return {
@@ -1371,9 +1482,11 @@ function newRound(
     lastDiscard: null,
     lastDiscardPlayer: null,
     lastDrawnTile: null,
+    lastDrawnAka: false,
     ippatsu: false,
     koyakuMode: state.koyakuMode,
     sanwahou: state.sanwahou,
     paoTarget: null,
+    ryukyokuReason: undefined,
   }
 }
