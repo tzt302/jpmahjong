@@ -1,144 +1,651 @@
-<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#eee6d5">
-  <meta name="description" content="JP MAHJONG：无 AI、和纸牌谱风格的日本立直麻将与何切练习网站。">
-  <title>JP MAHJONG · 日本麻将</title>
-  <link rel="stylesheet" href="styles.css?v=0.8.0">
-</head>
-<body>
-  <div class="paper-noise" aria-hidden="true"></div>
-  <header class="site-header">
-    <a class="brand" href="#home" data-route="home" aria-label="JP MAHJONG 首页">
-      <span class="brand-seal">雀</span>
-      <span><strong>JP MAHJONG</strong><small>日本麻将 · 和纸牌谱</small></span>
-    </a>
-    <nav aria-label="主导航">
-      <button class="nav-link active" data-route="home">首页</button>
-      <button class="nav-link" data-route="table">牌桌</button>
-      <button class="nav-link" data-route="quiz">何切馆</button>
-    </nav>
-    <span class="version">AI BATTLE · 0.8</span>
-  </header>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&display=swap');
 
-  <main>
-    <section id="homeView" class="view home-view">
-      <div class="hero-copy">
-        <p class="kicker">打牌，也读牌</p>
-        <h1>一张安静的<br><em>日本麻将牌桌</em></h1>
-        <p class="lede">没有 AI 教练和出牌提示，只保留纯粹对局。你将坐在东家位置，与三位电脑雀士完成一场日本麻将。</p>
-        <div class="mode-selector" aria-label="选择游戏模式"><button data-player-count="4" class="active"><b>四人麻雀</b><small>标准东风战</small></button><button data-player-count="3"><b>三人麻雀</b><small>移除二万至八万</small></button></div>
-        <div class="hero-actions">
-          <button class="primary" data-route="table">开始挑战 AI <span>→</span></button>
-          <button class="secondary" data-route="quiz">今日何切</button>
-        </div>
-        <p class="edition-note">第二版 · 单人对战三位 AI / 自摸判定 / 每日一题 / 闯关进度</p>
-      </div>
-      <div class="hero-table" aria-hidden="true">
-        <div class="ink-circle"></div>
-        <span class="wind north">北</span><span class="wind east">東</span><span class="wind south">南</span><span class="wind west">西</span>
-        <div class="hero-center"><small>東一局</small><b>局</b><span>余 83</span></div>
-        <div class="sample-river river-a">一萬　九筒　北　五索</div>
-        <div class="sample-river river-b">發　八萬　三筒　東</div>
-      </div>
-    </section>
+:root {
+  --paper: #eee7d7;
+  --paper-deep: #ded3bd;
+  --ink: #172b2a;
+  --muted: #69706a;
+  --indigo: #294a50;
+  --indigo-dark: #17383c;
+  --felt: #526b59;
+  --vermillion: #a43f30;
+  --line: rgba(27, 47, 44, .18);
+  --shadow: rgba(34, 36, 29, .2);
+  font-family: "Noto Serif SC", "Yu Mincho", "Microsoft YaHei", serif;
+  color: var(--ink);
+  background: var(--paper);
+}
 
-    <section id="tableView" class="view table-view hidden">
-      <aside id="tableSidebar" class="table-sidebar collapsed">
-        <button id="sidebarToggle" class="sidebar-toggle" aria-label="展开牌局信息" aria-expanded="false">›</button>
-        <div class="sidebar-rail">
-          <span class="mini-seal">雀</span>
-          <button class="rail-icon active" title="牌局">局</button>
-          <button class="rail-icon" data-route="quiz" title="何切馆">切</button>
-          <button class="rail-icon" data-route="home" title="首页">門</button>
-        </div>
-        <div class="sidebar-content">
-          <p class="kicker">牌局记录</p>
-          <h2>東一局</h2>
-          <ol id="seatList" class="seat-list"></ol>
-          <div class="rule-note"><strong>当前规则</strong><span>玩家对战三位 AI<br>无 AI 教练 · 不提示切牌</span></div>
-          <div class="sidebar-mode"><button data-player-count="4">四麻</button><button data-player-count="3">三麻</button></div>
-          <button id="restartButton" class="text-button">重新开局</button>
-        </div>
-      </aside>
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: linear-gradient(110deg, rgba(255,255,255,.2), transparent 40%), var(--paper); }
+button, a { font: inherit; }
+button { color: inherit; }
+button:focus-visible, a:focus-visible { outline: 3px solid rgba(164,63,48,.35); outline-offset: 3px; }
+.hidden { display: none !important; }
+.paper-noise { position: fixed; inset: 0; pointer-events: none; z-index: 20; opacity: .12; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.22'/%3E%3C/svg%3E"); mix-blend-mode: multiply; }
 
-      <div class="game-stage">
-        <div class="stage-meta"><span id="roundText">東一局</span><span id="wallText">牌山 83</span></div>
-        <div class="table-scene">
-          <div class="player-plaque plaque-top"><b>西</b><span>静寂の庭</span><strong>25,000</strong></div>
-          <div class="player-plaque plaque-left"><b>北</b><span>月下の牌</span><strong>25,000</strong></div>
-          <div class="player-plaque plaque-right"><b>南</b><span>竹林の道</span><strong>25,000</strong></div>
-          <div class="mahjong-table">
-            <div class="felt-grain"></div>
-            <div id="wallTop" class="tile-wall wall-top" aria-hidden="true"></div>
-            <div id="wallLeft" class="tile-wall wall-left" aria-hidden="true"></div>
-            <div id="wallRight" class="tile-wall wall-right" aria-hidden="true"></div>
-            <div id="wallBottom" class="tile-wall wall-bottom" aria-hidden="true"></div>
-            <div class="seat-marker marker-top">西</div>
-            <div class="seat-marker marker-left">北</div>
-            <div class="seat-marker marker-right">南</div>
-            <div class="seat-marker marker-bottom">東</div>
-            <div class="table-center"><b>東一局</b><span>供托 × 0　 本场 × 0</span><small>残り <i id="centerWall">83</i></small></div>
-            <div class="dora-box"><span>ドラ表示牌</span><div id="doraTile"></div></div>
-            <div id="river0" class="river river-bottom"></div>
-            <div id="river1" class="river river-right"></div>
-            <div id="river2" class="river river-top"></div>
-            <div id="river3" class="river river-left"></div>
-          </div>
-        </div>
-        <section class="hand-dock">
-          <div class="turn-line"><span id="turnSeal">東</span><div><small id="turnLabel">YOUR SEAT</small><strong id="turnName">東家</strong></div><p id="turnMessage">选择一张牌打出</p><b class="player-score">25,000</b></div>
-          <div id="meldArea" class="meld-area" aria-label="副露"></div>
-          <div id="hand" class="hand" aria-label="当前玩家手牌"></div>
-          <div class="hand-actions">
-            <span id="callStatus" class="call-status">鸣牌</span>
-            <button id="chiButton" class="action-button call-action" disabled><b>吃</b><small>CHI</small></button>
-            <button id="ponButton" class="action-button call-action" disabled><b>碰</b><small>PON</small></button>
-            <button id="kanButton" class="action-button call-action" disabled><b>杠</b><small>KAN</small></button>
-            <button id="skipCallButton" class="action-button skip-action hidden">跳过</button>
-            <button id="riichiButton" class="action-button muted-action" disabled>立直</button>
-            <button id="ronButton" class="action-button ron-action" disabled>ロン</button>
-            <button id="tsumoButton" class="action-button win hidden">自摸</button>
-            <button id="sortButton" class="action-button">理牌</button>
-            <div id="choicePanel" class="choice-panel hidden" aria-label="选择鸣牌牌型"></div>
-          </div>
-        </section>
-      </div>
-    </section>
+.site-header { height: 78px; display: flex; align-items: center; gap: 42px; padding: 0 4vw; border-bottom: 1px solid var(--line); position: relative; z-index: 10; background: rgba(238,231,215,.88); backdrop-filter: blur(8px); }
+.brand { display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
+.brand-seal, .mini-seal { display: grid; place-items: center; color: #f4ead9; background: var(--vermillion); border-radius: 2px; box-shadow: inset 0 0 0 2px rgba(255,255,255,.17); }
+.brand-seal { width: 42px; height: 42px; font-size: 22px; transform: rotate(-2deg); }
+.brand strong, .brand small { display: block; letter-spacing: .1em; }
+.brand strong { font-size: 16px; }
+.brand small { color: var(--muted); font-size: 10px; margin-top: 3px; }
+nav { display: flex; gap: 5px; }
+.nav-link { padding: 10px 16px; background: transparent; border: 0; cursor: pointer; border-bottom: 1px solid transparent; }
+.nav-link:hover, .nav-link.active { color: var(--vermillion); border-color: var(--vermillion); }
+.version { margin-left: auto; color: var(--muted); font-size: 10px; letter-spacing: .15em; }
 
-    <section id="quizView" class="view quiz-view hidden">
-      <header class="page-heading">
-        <div><p class="kicker">何切馆</p><h1>今天，你会切哪一张？</h1></div>
-        <div class="streak-card"><small>连续答题</small><strong id="streakValue">0 日</strong></div>
-      </header>
-      <div class="quiz-layout">
-        <article class="quiz-card">
-          <div class="quiz-meta"><span id="quizBadge">每日一题</span><span id="quizProgress">第 1 / 5 题</span></div>
-          <div class="situation"><span id="quizRound">東一局 · 南家 · 6巡目</span><span id="quizDora">宝牌表示：四筒</span></div>
-          <div id="quizHand" class="quiz-hand" aria-label="何切手牌"></div>
-          <p class="quiz-prompt">请选择你认为最合适的切牌</p>
-          <div id="quizOptions" class="quiz-options"></div>
-          <div id="quizResult" class="quiz-result hidden" aria-live="polite"></div>
-          <button id="nextQuestion" class="primary hidden">下一题 <span>→</span></button>
-        </article>
-        <aside class="chapter-card">
-          <p class="kicker">牌效入门 · 第一章</p>
-          <h2>保留好形</h2>
-          <p>完成 5 道人工编排题，认识两面、嵌张与孤张的取舍。</p>
-          <div class="progress-track"><i id="chapterProgress"></i></div>
-          <strong id="chapterScore">0 / 5 完成</strong>
-          <ul><li>答案由固定规则和人工解析给出</li><li>不使用生成式 AI</li><li>进度仅保存在当前浏览器</li></ul>
-        </aside>
-      </div>
-    </section>
-  </main>
+.view { min-height: calc(100vh - 78px); }
+.home-view { display: grid; grid-template-columns: .86fr 1.14fr; align-items: center; min-height: calc(100vh - 78px); padding: 6vw; overflow: hidden; }
+.hero-copy { position: relative; z-index: 2; max-width: 590px; }
+.kicker { color: var(--vermillion); font-size: 13px; letter-spacing: .28em; font-weight: 700; }
+.hero-copy h1, .page-heading h1 { margin: 14px 0 24px; font-size: clamp(44px, 5vw, 76px); line-height: 1.12; font-weight: 600; letter-spacing: -.04em; }
+.hero-copy h1 em { color: var(--indigo); font-style: normal; border-bottom: 2px solid rgba(164,63,48,.45); }
+.lede { max-width: 510px; line-height: 2; color: #515b56; }
+.hero-actions { display: flex; gap: 12px; margin: 34px 0 20px; }
+.primary, .secondary, .action-button { border: 0; min-height: 48px; padding: 0 22px; cursor: pointer; border-radius: 2px; transition: transform .15s ease, background .15s ease; }
+.primary { background: var(--vermillion); color: #f8efe0; box-shadow: 0 5px 0 #743126; }
+.primary:hover { transform: translateY(-2px); }
+.primary:active { transform: translateY(3px); box-shadow: 0 2px 0 #743126; }
+.primary span { margin-left: 18px; }
+.secondary, .action-button { background: transparent; border: 1px solid var(--indigo); color: var(--indigo); }
+.edition-note { color: var(--muted); font-size: 12px; }
+.hero-table { position: relative; width: min(54vw, 740px); aspect-ratio: 1.18; transform: perspective(1200px) rotateX(48deg) rotateZ(-7deg); background: #cfc3aa; border: 22px solid #334d4d; box-shadow: 0 45px 45px rgba(34,45,38,.24), inset 0 0 0 4px rgba(255,255,255,.2); }
+.hero-table::before { content: ""; position: absolute; inset: 24px; border: 1px solid rgba(24,52,48,.25); background: radial-gradient(circle at 50% 40%, rgba(255,255,255,.22), transparent 45%); }
+.ink-circle { position: absolute; width: 46%; aspect-ratio: 1; border: 3px solid rgba(23,56,60,.4); border-radius: 50%; left: 27%; top: 25%; box-shadow: 0 0 0 8px rgba(23,56,60,.07), inset 4px 4px 0 rgba(255,255,255,.25); }
+.wind { position: absolute; font-size: 24px; color: rgba(23,56,60,.62); }
+.north { top: 10%; left: 49%; }.south { bottom: 10%; left: 49%; }.east { right: 10%; top: 48%; }.west { left: 10%; top: 48%; }
+.hero-center { position: absolute; inset: 39% 41%; display: grid; place-items: center; background: var(--indigo-dark); color: #eee7d7; transform: rotate(7deg); }
+.hero-center small, .hero-center span { font-size: 8px; }.hero-center b { font-size: 28px; }
+.sample-river { position: absolute; color: rgba(23,43,42,.72); font-size: 12px; letter-spacing: .2em; }
+.river-a { left: 32%; bottom: 24%; }.river-b { top: 27%; left: 31%; transform: rotate(180deg); }
 
-  <div id="resultModal" class="modal hidden" role="dialog" aria-modal="true">
-    <div class="result-card"><span class="result-seal">和</span><p id="resultEyebrow">本局结束</p><h2 id="resultTitle">東家 自摸</h2><p id="resultCopy"></p><button id="newRoundButton" class="primary">再开一局</button></div>
-  </div>
+.table-view { display: grid; grid-template-columns: auto 1fr; background: #e6ddc9; overflow: hidden; }
+.table-sidebar { width: 270px; position: relative; display: grid; grid-template-columns: 64px 1fr; border-right: 1px solid var(--line); transition: width .28s ease; background: rgba(245,239,225,.72); z-index: 5; }
+.table-sidebar.collapsed { width: 64px; }
+.sidebar-rail { display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 24px; border-right: 1px solid var(--line); }
+.mini-seal { width: 35px; height: 35px; margin-bottom: 18px; }
+.rail-icon { width: 38px; height: 38px; border: 0; background: transparent; cursor: pointer; color: var(--muted); }
+.rail-icon:hover, .rail-icon.active { color: var(--vermillion); background: rgba(164,63,48,.08); }
+.sidebar-toggle { position: absolute; right: -15px; top: 50%; width: 30px; height: 54px; z-index: 4; border: 1px solid var(--line); background: var(--paper); color: var(--vermillion); cursor: pointer; font-size: 25px; box-shadow: 2px 3px 7px rgba(0,0,0,.08); }
+.sidebar-content { width: 206px; padding: 28px 22px; overflow: hidden; opacity: 1; transition: opacity .18s; }
+.collapsed .sidebar-content { opacity: 0; pointer-events: none; }
+.sidebar-content h2 { margin: 2px 0 26px; font-size: 28px; }
+.seat-list { padding: 0; list-style: none; }
+.seat-list li { display: flex; justify-content: space-between; padding: 11px 8px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.seat-list li.current { color: var(--vermillion); background: rgba(164,63,48,.06); }
+.seat-list span { color: var(--muted); }
+.rule-note { margin-top: 28px; padding: 14px 0; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--line); }
+.rule-note strong, .rule-note span { display: block; }.rule-note span { color: var(--muted); font-size: 11px; line-height: 1.8; margin-top: 7px; }
+.text-button { margin-top: 18px; padding: 6px 0; border: 0; border-bottom: 1px solid var(--vermillion); background: transparent; color: var(--vermillion); cursor: pointer; }
 
-  <script type="module" src="src/app.js?v=0.8.0"></script>
-</body>
-</html>
+.game-stage { min-width: 0; display: flex; flex-direction: column; align-items: center; padding: 18px 24px 16px; transition: padding .28s; }
+.stage-meta { width: min(78vh, 790px); display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; letter-spacing: .12em; margin-bottom: 8px; }
+.mahjong-table { position: relative; width: min(68vh, 690px); aspect-ratio: 1; background: #5e7562; border: 15px solid var(--indigo-dark); outline: 3px solid #b3a98f; transform: perspective(1250px) rotateX(34deg); transform-origin: center 70%; box-shadow: 0 27px 35px rgba(37,43,33,.28), inset 0 0 45px rgba(24,45,35,.25); }
+.felt-grain { position: absolute; inset: 0; opacity: .22; background-image: repeating-linear-gradient(19deg, rgba(255,255,255,.08) 0 1px, transparent 1px 5px); }
+.table-center { position: absolute; left: 41%; top: 40%; width: 18%; aspect-ratio: 1; display: grid; place-content: center; text-align: center; color: #eee7d7; background: var(--indigo-dark); border: 3px double rgba(238,231,215,.45); box-shadow: 4px 5px 0 rgba(20,39,37,.23); }
+.table-center b { font-size: 31px; line-height: 1; }.table-center span,.table-center small { font-size: 10px; letter-spacing: .15em; }
+.seat-marker { position: absolute; color: rgba(245,239,225,.8); font-size: 11px; letter-spacing: .16em; }
+.marker-top { top: 4%; left: 47%; transform: rotate(180deg); }.marker-bottom { bottom: 4%; left: 47%; }.marker-left { left: 4%; top: 48%; transform: rotate(90deg); }.marker-right { right: 4%; top: 48%; transform: rotate(-90deg); }
+.river { position: absolute; display: grid; grid-template-columns: repeat(6, 25px); grid-auto-rows: 34px; gap: 2px; min-width: 160px; min-height: 70px; }
+.river-bottom { bottom: 12%; left: 36%; }.river-top { top: 12%; left: 36%; transform: rotate(180deg); }.river-left { left: 13%; top: 36%; transform: rotate(90deg); }.river-right { right: 13%; top: 36%; transform: rotate(-90deg); }
+.river-tile { width: 25px; height: 34px; display: grid; place-items: center; background: #e8dfcd; border-radius: 2px; box-shadow: 1px 2px 0 rgba(19,45,38,.35); overflow: hidden; }
+.river-tile img { width: 90%; height: 90%; object-fit: contain; }
+.river-tile.land { animation: tile-land .19s cubic-bezier(.2,.8,.25,1); transform-origin: center bottom; }
+.hand-dock { width: min(100%, 930px); padding: 8px 18px 0; position: relative; z-index: 2; }
+.turn-line { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+.turn-line > span { display: grid; place-items: center; width: 32px; height: 32px; background: var(--vermillion); color: var(--paper); }
+.turn-line small,.turn-line strong { display: block; }.turn-line small { font-size: 9px; color: var(--muted); }.turn-line p { margin-left: auto; color: var(--muted); font-size: 12px; }
+.hand { min-height: 78px; display: flex; justify-content: center; align-items: flex-end; gap: clamp(1px, .25vw, 4px); }
+.hand.waiting .tile { cursor: default; filter: saturate(.72); }
+.hand.waiting .tile:hover { transform: none; filter: saturate(.72); }
+.tile { width: clamp(34px, 4.7vw, 58px); aspect-ratio: .72; padding: 3px; border: 1px solid rgba(44,48,38,.28); background: #efe8d9; border-radius: 3px; box-shadow: 1px 5px 0 #c7baa1, 2px 7px 7px rgba(35,38,31,.22); cursor: pointer; transition: transform .13s ease, filter .13s; }
+.tile:hover { transform: translateY(-9px); filter: brightness(1.04); }.tile.drawn { margin-left: 9px; }.tile.discarding { transform: translateY(-22px) rotate(-2deg); opacity: .4; }
+.tile.drawn { animation: drawn-tile-arrive .32s cubic-bezier(.18,.8,.28,1); }
+.flying-tile { position: fixed; z-index: 100; display: grid; place-items: center; padding: 3px; overflow: hidden; pointer-events: none; border: 1px solid rgba(44,48,38,.3); border-radius: 3px; background: #efe8d9; box-shadow: 3px 10px 12px rgba(31,37,31,.32), 1px 5px 0 #c7baa1; transform-origin: left top; }
+.flying-tile img { width: 100%; height: 100%; object-fit: contain; }
+.tile-wall.drawing .wall-tile:last-child { animation: wall-draw .17s cubic-bezier(.2,.8,.3,1); }
+@keyframes wall-draw { 0% { transform: translateY(0); } 48% { transform: translateY(-12px) rotate(-3deg); filter: brightness(1.18); } 100% { transform: translateY(0); } }
+@keyframes tile-land { 0% { transform: translateY(-8px) scale(1.08); filter: brightness(1.08); } 62% { transform: translateY(2px) scale(.97); } 100% { transform: translateY(0) scale(1); } }
+@keyframes drawn-tile-arrive { 0% { opacity: 0; transform: translateX(28px) translateY(-12px) rotate(4deg); } 72% { opacity: 1; transform: translateX(-2px) translateY(1px) rotate(-1deg); } 100% { transform: translateX(0) translateY(0) rotate(0); } }
+.tile-face-image { width: 100%; height: 100%; object-fit: contain; display: block; }
+.hand-actions { position: absolute; right: 18px; top: 6px; display: flex; gap: 7px; }
+.action-button { min-height: 38px; padding: 0 14px; background: rgba(238,231,215,.85); }.action-button.win { background: var(--vermillion); color: #fff5e6; border-color: var(--vermillion); }
+.action-button:disabled { opacity: .35; cursor: not-allowed; }
+
+/* v0.3 — reference-matched washi table */
+.game-stage { padding-top: 8px; }
+.stage-meta { visibility: hidden; height: 10px; margin: 0; }
+.table-scene { position: relative; width: min(66vw, calc((100vh - 295px) * 1.58), 980px); margin: 43px auto 2px; }
+.mahjong-table {
+  width: 100%;
+  aspect-ratio: 1.58;
+  border: 11px solid #223d4b;
+  outline: 3px solid #a79c87;
+  border-radius: 13px;
+  background: #e9e1d0;
+  transform: perspective(1500px) rotateX(17deg);
+  transform-origin: center 72%;
+  box-shadow: 0 22px 18px rgba(47,43,33,.27), inset 0 0 0 2px rgba(255,255,255,.5);
+}
+.mahjong-table .felt-grain {
+  opacity: .34;
+  background-image: radial-gradient(circle at center, transparent 0 19%, rgba(41,74,80,.09) 19.2% 19.5%, transparent 19.7% 27%, rgba(41,74,80,.055) 27.2% 27.5%, transparent 27.7%), repeating-linear-gradient(45deg, rgba(72,61,45,.035) 0 1px, transparent 1px 7px);
+}
+.player-plaque { position: absolute; z-index: 3; display: flex; align-items: center; gap: 11px; min-width: 270px; height: 42px; padding: 0 12px; border: 1px solid rgba(70,65,51,.32); background: rgba(242,235,219,.92); box-shadow: 2px 3px 0 rgba(65,57,42,.09); font-size: 13px; }
+.player-plaque b { display: grid; place-items: center; width: 29px; height: 29px; color: #f2ead9; background: var(--indigo-dark); }
+.player-plaque strong { margin-left: auto; font-size: 17px; font-weight: 500; }
+.plaque-top { top: -52px; left: 50%; transform: translateX(-50%); }
+.plaque-left { left: -151px; top: 44%; transform: rotate(-90deg); }
+.plaque-right { right: -151px; top: 44%; transform: rotate(90deg); }
+.plaque-right b { background: var(--vermillion); }
+.tile-wall { position: absolute; z-index: 2; display: flex; filter: drop-shadow(2px 5px 2px rgba(32,39,35,.28)); }
+.wall-tile { display: block; width: clamp(16px, 1.65vw, 23px); height: clamp(30px, 2.85vw, 41px); margin-right: -1px; padding: 1px; overflow: hidden; border: 1px solid rgba(17,38,49,.72); border-radius: 3px; background: repeating-linear-gradient(45deg, rgba(255,255,255,.035) 0 2px, transparent 2px 5px), #203a4b; box-shadow: inset 0 0 0 1px rgba(232,226,211,.1); }
+.wall-tile img { display: none; }
+.wall-top { top: 4%; left: 27%; }
+.wall-bottom { display: none; }
+.wall-left { left: -11%; top: 46%; transform: rotate(90deg); }
+.wall-right { right: -11%; top: 46%; transform: rotate(-90deg); }
+.mahjong-table .seat-marker { display: grid; place-items: center; width: 27px; height: 27px; padding: 0; color: #f1e8d6; background: var(--indigo-dark); font-size: 14px; box-shadow: 2px 3px 0 rgba(26,39,39,.22); }
+.mahjong-table .marker-top { top: 30%; left: 49%; transform: none; }
+.mahjong-table .marker-bottom { bottom: 29%; left: 49%; }
+.mahjong-table .marker-left { left: 36%; top: 48%; transform: none; }
+.mahjong-table .marker-right { right: 36%; top: 48%; transform: none; background: var(--vermillion); }
+.mahjong-table .table-center { left: 42%; top: 36%; width: 16%; aspect-ratio: 1.12; padding: 9px; clip-path: polygon(27% 0,73% 0,100% 27%,100% 73%,73% 100%,27% 100%,0 73%,0 27%); border: 0; outline: 2px solid rgba(238,231,215,.6); }
+.mahjong-table .table-center b { font-size: 20px; border-bottom: 1px solid rgba(238,231,215,.6); padding-bottom: 5px; }
+.mahjong-table .table-center span { margin-top: 4px; white-space: nowrap; font-size: 8px; }
+.mahjong-table .table-center small { margin-top: 2px; font-size: 11px; }.mahjong-table .table-center i { font-style: normal; }
+.dora-box { position: absolute; z-index: 2; left: 61%; top: 56%; padding: 5px; border: 1px solid rgba(65,57,42,.22); background: rgba(242,235,219,.6); text-align: center; }
+.dora-box > span { display: block; margin-bottom: 3px; font-size: 8px; }.dora-box > div { width: 29px; height: 40px; padding: 2px; background: #eee6d6; box-shadow: 1px 2px 0 #b8ac93; }.dora-box img { width: 100%; height: 100%; object-fit: contain; }
+.mahjong-table .river { grid-template-columns: repeat(6, clamp(18px, 2vw, 27px)); grid-auto-rows: clamp(25px, 2.8vw, 37px); gap: 2px; min-width: 0; min-height: 0; }
+.mahjong-table .river-tile { width: clamp(18px, 2vw, 27px); height: clamp(25px, 2.8vw, 37px); }
+.mahjong-table .river-bottom { bottom: 13%; left: 40%; }
+.mahjong-table .river-top { top: 14%; left: 40%; }
+.mahjong-table .river-left { left: 22%; top: 37%; }
+.mahjong-table .river-right { right: 22%; top: 37%; }
+.hand-dock { width: min(100%, 1040px); margin-top: 5px; }
+.hand { min-height: 92px; }
+.hand .tile { width: clamp(39px, 4.5vw, 62px); }
+.turn-line { width: min(520px, 70%); margin: 0 auto 9px; padding: 5px 11px; border: 1px solid var(--line); background: rgba(244,237,222,.82); }
+.hand-actions { position: static; justify-content: center; margin-top: 15px; }
+.hand-actions .action-button { min-width: 112px; min-height: 48px; font-size: 18px; }
+.hand-actions .ron-action { border-color: var(--vermillion); background: var(--vermillion); color: #f7ecda; }
+.hand-actions .muted-action { background: #8b9278; color: #f5eddd; border-color: #71775f; }
+
+.quiz-view { padding: 54px 7vw; }
+.page-heading { display: flex; align-items: end; justify-content: space-between; max-width: 1200px; margin: 0 auto 34px; }
+.page-heading h1 { font-size: clamp(34px, 4vw, 58px); margin: 6px 0 0; }
+.streak-card { text-align: right; border-right: 4px solid var(--vermillion); padding-right: 14px; }.streak-card small,.streak-card strong { display: block; }.streak-card small { color: var(--muted); font-size: 11px; }.streak-card strong { font-size: 24px; }
+.quiz-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 26px; max-width: 1200px; margin: auto; }
+.quiz-card, .chapter-card { border: 1px solid var(--line); background: rgba(247,241,227,.62); }
+.quiz-card { padding: clamp(24px, 4vw, 48px); min-height: 535px; }
+.quiz-meta,.situation { display: flex; justify-content: space-between; }.quiz-meta { border-bottom: 2px solid var(--ink); padding-bottom: 12px; }.quiz-meta span:first-child { color: var(--vermillion); font-weight: 700; }.quiz-meta span:last-child,.situation { color: var(--muted); font-size: 12px; }
+.situation { padding: 18px 0 28px; }
+.quiz-hand { display: flex; justify-content: center; gap: 3px; padding: 30px 14px; background: rgba(41,74,80,.08); border-top: 1px solid rgba(41,74,80,.18); border-bottom: 1px solid rgba(41,74,80,.18); overflow-x: auto; }
+.quiz-hand .tile { cursor: default; flex: 0 0 clamp(30px, 3.5vw, 45px); }.quiz-hand .tile:hover { transform: none; }
+.quiz-prompt { text-align: center; margin: 25px 0 14px; }
+.quiz-options { display: flex; justify-content: center; gap: 10px; }.quiz-options button { min-width: 100px; padding: 12px 16px; background: transparent; border: 1px solid var(--indigo); cursor: pointer; }.quiz-options button:hover { background: var(--indigo); color: var(--paper); }.quiz-options button.correct { background: var(--indigo); color: var(--paper); }.quiz-options button.wrong { border-color: var(--vermillion); color: var(--vermillion); text-decoration: line-through; }
+.quiz-result { max-width: 650px; margin: 22px auto; padding: 17px 20px; border-left: 4px solid var(--vermillion); background: rgba(164,63,48,.06); }.quiz-result strong { color: var(--vermillion); }.quiz-result p { margin: 8px 0 0; color: #535c56; line-height: 1.8; font-size: 13px; }
+#nextQuestion { display: block; margin: 20px auto 0; }
+.chapter-card { padding: 28px; align-self: start; }.chapter-card h2 { font-size: 28px; margin: 8px 0 15px; }.chapter-card > p:not(.kicker) { color: var(--muted); line-height: 1.8; font-size: 13px; }.progress-track { height: 5px; background: var(--paper-deep); margin: 27px 0 10px; }.progress-track i { display: block; width: 0; height: 100%; background: var(--vermillion); transition: width .35s; }.chapter-card > strong { font-size: 13px; }.chapter-card ul { padding-left: 18px; color: var(--muted); font-size: 11px; line-height: 2; margin-top: 30px; }
+
+.handoff,.modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(22,42,40,.88); backdrop-filter: blur(8px); padding: 20px; }
+.handoff-card,.result-card { width: min(430px, 100%); padding: 48px; text-align: center; background: var(--paper); box-shadow: 12px 14px 0 rgba(0,0,0,.18); }.handoff-card > span,.result-seal { display: grid; place-items: center; width: 75px; height: 75px; margin: auto; border: 2px solid var(--vermillion); border-radius: 50%; color: var(--vermillion); font-size: 35px; }.handoff-card p { margin: 25px 0 2px; color: var(--muted); }.handoff-card h2,.result-card h2 { margin: 4px 0 12px; font-size: 34px; }.handoff-card small { display: block; color: var(--muted); margin-bottom: 28px; }.handoff-card .primary,.result-card .primary { width: 100%; margin-top: 20px; }
+.result-card p { line-height: 1.8; color: var(--muted); }
+
+@media (max-width: 900px) {
+  .version { display: none; }.site-header { gap: 18px; }.home-view { grid-template-columns: 1fr; padding: 60px 7vw; }.hero-table { width: 78vw; margin: 65px auto 0; }.quiz-layout { grid-template-columns: 1fr; }.chapter-card { order: -1; }.mahjong-table { width: min(67vh, 78vw); }.table-sidebar { position: absolute; height: calc(100vh - 78px); }
+}
+
+@media (max-width: 600px) {
+  .site-header { height: 66px; padding: 0 14px; }.brand small { display: none; }.brand-seal { width: 34px; height: 34px; }.brand strong { font-size: 12px; }nav { margin-left: auto; }.nav-link { padding: 8px; font-size: 12px; }.view { min-height: calc(100vh - 66px); }.hero-copy h1 { font-size: 41px; }.hero-actions { flex-direction: column; }.hero-table { width: 88vw; border-width: 13px; }.game-stage { padding: 10px 6px 10px 54px; }.mahjong-table { width: calc(100vw - 66px); border-width: 9px; transform: perspective(1000px) rotateX(29deg); }.table-sidebar { height: calc(100vh - 66px); }.table-sidebar.collapsed { width: 48px; }.sidebar-rail { width: 48px; }.sidebar-toggle { right: -14px; }.hand-dock { padding: 0 4px; }.tile { width: clamp(21px, 5.4vw, 35px); padding: 1px; box-shadow: 1px 3px 0 #c7baa1; }.tile.drawn { margin-left: 3px; }.turn-line p { display: none; }.hand-actions { position: static; justify-content: center; margin-top: 9px; }.quiz-view { padding: 32px 15px; }.page-heading { align-items: start; }.streak-card { display: none; }.quiz-card { padding: 18px 10px; }.situation { flex-direction: column; gap: 5px; }.quiz-hand { justify-content: start; padding: 18px 4px; }.quiz-options button { min-width: 82px; padding: 10px 7px; }.handoff-card,.result-card { padding: 35px 24px; }
+}
+
+/* v0.5 — full-screen match room and tactile washi table */
+body[data-view="table"] { overflow: hidden; background: #d8d0c0; }
+body[data-view="table"] .site-header { display: none; }
+body[data-view="table"] .paper-noise { opacity: .07; }
+body[data-view="table"] .table-view { min-height: 100vh; height: 100vh; }
+
+body[data-view="table"] .table-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  height: 100vh;
+  width: 272px;
+  z-index: 30;
+  background: rgba(242, 237, 226, .97);
+  border-right: 1px solid rgba(39, 48, 43, .18);
+  box-shadow: 14px 0 35px rgba(35, 39, 34, .10);
+  backdrop-filter: blur(16px);
+}
+body[data-view="table"] .table-sidebar.collapsed { width: 68px; box-shadow: 5px 0 20px rgba(35,39,34,.06); }
+body[data-view="table"] .sidebar-rail { padding-top: 20px; background: rgba(255,255,255,.16); }
+body[data-view="table"] .sidebar-toggle {
+  right: -17px;
+  top: calc(50% - 28px);
+  width: 34px;
+  height: 58px;
+  border-radius: 0 18px 18px 0;
+  border-left: 0;
+  color: #7d2f24;
+  background: #eee8dc;
+  box-shadow: 5px 4px 12px rgba(40,42,36,.12);
+}
+
+body[data-view="table"] .game-stage {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 12px 28px 14px 88px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 52% 44%, rgba(255,255,255,.56) 0, rgba(255,255,255,.13) 43%, transparent 68%),
+    linear-gradient(135deg, #e8e2d6 0%, #d9d1c2 100%);
+}
+body[data-view="table"] .game-stage::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: .28;
+  background-image: repeating-linear-gradient(92deg, rgba(73,64,49,.035) 0 1px, transparent 1px 6px);
+}
+body[data-view="table"] .stage-meta {
+  visibility: visible;
+  width: min(78vw, 1060px);
+  height: auto;
+  margin: 0;
+  color: #5c625d;
+  font-family: system-ui, sans-serif;
+  font-size: 10px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+body[data-view="table"] .stage-meta span:first-child::before { content: "RANKED MATCH  /  "; color: #9a392c; }
+
+body[data-view="table"] .table-scene {
+  width: min(76vw, calc((100vh - 255px) * 1.72), 1080px);
+  margin: 50px auto 0;
+  align-self: center;
+}
+body[data-view="table"] .mahjong-table {
+  width: 100%;
+  aspect-ratio: 1.64;
+  border: 12px solid #203a43;
+  outline: 1px solid #817969;
+  border-radius: 18px;
+  background: #d9d0bd;
+  transform: perspective(1450px) rotateX(18deg);
+  transform-origin: center 70%;
+  box-shadow:
+    0 7px 0 #132d36,
+    0 12px 0 #a49a86,
+    0 31px 35px rgba(36,39,32,.31),
+    inset 0 0 0 2px rgba(255,255,255,.67),
+    inset 0 0 48px rgba(87,73,51,.12);
+}
+body[data-view="table"] .mahjong-table::before {
+  content: "";
+  position: absolute;
+  inset: 18px;
+  border: 1px solid rgba(41,59,57,.17);
+  border-radius: 8px;
+  box-shadow: inset 0 0 28px rgba(74,67,52,.08);
+  pointer-events: none;
+}
+body[data-view="table"] .mahjong-table .felt-grain {
+  opacity: 1;
+  background:
+    radial-gradient(circle at center, transparent 0 20%, rgba(34,61,63,.07) 20.2% 20.5%, transparent 20.7% 30%, rgba(34,61,63,.045) 30.2% 30.5%, transparent 30.7%),
+    repeating-linear-gradient(47deg, rgba(79,66,43,.026) 0 1px, transparent 1px 8px),
+    repeating-linear-gradient(-43deg, rgba(255,255,255,.16) 0 1px, transparent 1px 11px);
+}
+
+body[data-view="table"] .player-plaque {
+  min-width: 254px;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid rgba(57,55,46,.30);
+  border-radius: 3px;
+  background: rgba(239,233,219,.96);
+  box-shadow: 0 3px 0 rgba(83,75,59,.12), 0 9px 18px rgba(49,48,40,.10);
+  font-size: 12px;
+}
+body[data-view="table"] .player-plaque b { border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+body[data-view="table"] .player-plaque strong { font-family: Georgia, serif; letter-spacing: .03em; }
+body[data-view="table"] .plaque-top { top: -50px; }
+body[data-view="table"] .plaque-left { left: -147px; }
+body[data-view="table"] .plaque-right { right: -147px; }
+
+body[data-view="table"] .tile-wall { filter: drop-shadow(2px 5px 3px rgba(25,35,34,.31)); }
+body[data-view="table"] .wall-tile {
+  width: clamp(18px, 1.63vw, 25px);
+  height: clamp(34px, 2.75vw, 43px);
+  border-color: rgba(15,34,43,.83);
+  border-radius: 4px 4px 3px 3px;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.10), transparent 18% 80%, rgba(0,0,0,.12)),
+    repeating-linear-gradient(45deg, rgba(255,255,255,.032) 0 2px, transparent 2px 6px),
+    #183745;
+  box-shadow: inset 0 2px 0 rgba(235,229,212,.20), inset 0 -3px 0 rgba(8,22,29,.22);
+}
+body[data-view="table"] .wall-top { top: 5%; left: 29%; }
+body[data-view="table"] .wall-left { left: -10.2%; top: 46%; }
+body[data-view="table"] .wall-right { right: -10.2%; top: 46%; }
+
+body[data-view="table"] .mahjong-table .table-center {
+  left: 42%; top: 34%; width: 16%;
+  padding: 10px;
+  background: linear-gradient(145deg, #1e414b, #142e38);
+  border: 1px solid rgba(239,231,213,.45);
+  outline: 4px double rgba(31,58,64,.28);
+  clip-path: polygon(24% 0,76% 0,100% 24%,100% 76%,76% 100%,24% 100%,0 76%,0 24%);
+  box-shadow: 0 8px 12px rgba(27,39,38,.24);
+}
+body[data-view="table"] .mahjong-table .table-center b { font-size: clamp(18px, 1.7vw, 25px); letter-spacing: .12em; }
+body[data-view="table"] .mahjong-table .table-center small { font-family: system-ui, sans-serif; }
+body[data-view="table"] .mahjong-table .seat-marker { box-shadow: 0 4px 6px rgba(25,38,37,.24), inset 0 0 0 1px rgba(255,255,255,.18); }
+
+body[data-view="table"] .dora-box {
+  left: 61%; top: 55%;
+  padding: 5px 7px 7px;
+  border-radius: 3px;
+  background: rgba(236,229,214,.78);
+  box-shadow: 0 3px 7px rgba(58,53,43,.10);
+}
+body[data-view="table"] .dora-box > div { width: 31px; height: 43px; border-radius: 3px; }
+
+body[data-view="table"] .mahjong-table .river { gap: 3px; }
+body[data-view="table"] .mahjong-table .river-tile {
+  width: clamp(20px, 2.1vw, 30px);
+  height: clamp(28px, 2.9vw, 41px);
+  padding: 1px;
+  border: 1px solid rgba(73,67,53,.22);
+  background: #eee8da;
+  box-shadow: 1px 3px 0 #b8ad97, 2px 4px 5px rgba(39,43,35,.15);
+}
+body[data-view="table"] .mahjong-table .river { grid-template-columns: repeat(6, clamp(20px, 2.1vw, 30px)); grid-auto-rows: clamp(28px, 2.9vw, 41px); }
+body[data-view="table"] .mahjong-table .river-bottom { bottom: 12%; left: 40%; }
+body[data-view="table"] .mahjong-table .river-top { top: 12%; left: 40%; }
+body[data-view="table"] .mahjong-table .river-left { left: 21%; top: 35%; }
+body[data-view="table"] .mahjong-table .river-right { right: 21%; top: 35%; }
+
+body[data-view="table"] .hand-dock {
+  width: min(calc(100vw - 105px), 1120px);
+  margin: -2px auto 0;
+  padding: 0 18px 8px;
+  position: relative;
+}
+body[data-view="table"] .turn-line {
+  width: 100%;
+  min-height: 43px;
+  margin: 0 auto 8px;
+  padding: 5px 10px;
+  border: 1px solid rgba(63,60,49,.26);
+  border-radius: 3px;
+  background: rgba(240,234,221,.94);
+  box-shadow: 0 4px 12px rgba(53,51,43,.10);
+}
+body[data-view="table"] .turn-line > span { width: 31px; height: 31px; border-radius: 2px; }
+body[data-view="table"] .turn-line p { margin: 0 18px 0 auto; }
+body[data-view="table"] .player-score { padding-left: 18px; border-left: 1px solid var(--line); font: 500 17px/1 Georgia, serif; }
+body[data-view="table"] .hand {
+  min-height: 88px;
+  padding: 0 8px;
+  gap: clamp(1px, .22vw, 3px);
+  perspective: 1000px;
+}
+body[data-view="table"] .hand .tile {
+  width: clamp(43px, 4.65vw, 66px);
+  border: 1px solid rgba(69,65,53,.36);
+  border-radius: 5px 5px 4px 4px;
+  background: linear-gradient(105deg, #f3eee2 0%, #e8dfcc 100%);
+  box-shadow: 1px 6px 0 #b6aa91, 3px 9px 9px rgba(40,42,35,.22), inset 1px 1px 0 rgba(255,255,255,.75);
+  transform-origin: center bottom;
+}
+body[data-view="table"] .hand .tile:hover { transform: translateY(-10px) rotateX(-3deg); }
+body[data-view="table"] .hand-actions { position: static; justify-content: center; gap: 7px; margin: 8px 0 0; }
+body[data-view="table"] .hand-actions .action-button {
+  min-width: 80px;
+  min-height: 36px;
+  padding: 0 15px;
+  border-radius: 3px;
+  background: rgba(240,234,221,.95);
+  font-size: 13px;
+  box-shadow: 0 3px 7px rgba(47,48,40,.08);
+}
+body[data-view="table"] .hand-actions .ron-action { background: #a53c2e; }
+
+@media (max-width: 900px) {
+  body[data-view="table"] .game-stage { padding-left: 76px; padding-right: 12px; }
+  body[data-view="table"] .table-scene { width: min(80vw, calc((100vh - 245px) * 1.58)); }
+  body[data-view="table"] .plaque-left, body[data-view="table"] .plaque-right { display: none; }
+  body[data-view="table"] .hand-actions { margin-top: 10px; }
+  body[data-view="table"] .hand-dock { width: calc(100vw - 88px); }
+}
+
+@media (max-width: 600px) {
+  body[data-view="table"] { overflow-y: auto; }
+  body[data-view="table"] .table-view { min-height: 100svh; height: auto; }
+  body[data-view="table"] .table-sidebar.collapsed { width: 48px; }
+  body[data-view="table"] .game-stage { min-height: 100svh; height: auto; grid-template-rows: 18px auto auto; padding: 8px 4px 18px 54px; overflow: visible; }
+  body[data-view="table"] .stage-meta { width: 94%; }
+  body[data-view="table"] .table-scene { width: calc(100vw - 68px); margin-top: 34px; }
+  body[data-view="table"] .mahjong-table { aspect-ratio: 1.08; border-width: 7px; transform: perspective(1000px) rotateX(12deg); }
+  body[data-view="table"] .player-plaque { min-width: 185px; }
+  body[data-view="table"] .hand-dock { width: calc(100vw - 58px); padding-inline: 2px; margin-top: 10px; }
+  body[data-view="table"] .turn-line { width: 100%; }
+  body[data-view="table"] .player-score { font-size: 12px; padding-left: 8px; }
+  body[data-view="table"] .hand .tile { width: clamp(20px, 5.55vw, 33px); border-radius: 3px; box-shadow: 1px 3px 0 #b6aa91, 1px 5px 5px rgba(40,42,35,.16); }
+  body[data-view="table"] .hand-actions { position: static; margin-top: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) { *,*::before,*::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
+
+@media (max-width: 600px) {
+  .table-scene { width: calc(100vw - 72px); margin-top: 42px; }
+  .mahjong-table { width: 100%; aspect-ratio: 1.08; border-width: 7px; transform: perspective(1000px) rotateX(13deg); }
+  .player-plaque { min-width: 190px; height: 32px; font-size: 10px; }.player-plaque strong { font-size: 12px; }.player-plaque b { width: 23px; height: 23px; }
+  .plaque-top { top: -40px; }.plaque-left,.plaque-right { display: none; }
+  .wall-tile { width: 11px; height: 23px; }
+  .wall-top,.wall-bottom { left: 20%; }.wall-left { left: -25%; }.wall-right { right: -25%; }
+  .mahjong-table .table-center { left: 39%; top: 37%; width: 22%; }.mahjong-table .table-center b { font-size: 13px; }.mahjong-table .table-center span { display: none; }
+  .mahjong-table .marker-left { left: 28%; }.mahjong-table .marker-right { right: 28%; }
+  .dora-box { left: 63%; top: 58%; }.dora-box > span { display: none; }.dora-box > div { width: 19px; height: 27px; }
+  .mahjong-table .river { grid-template-columns: repeat(6, 14px); grid-auto-rows: 19px; }.mahjong-table .river-tile { width: 14px; height: 19px; }
+  .mahjong-table .river-bottom { left: 34%; }.mahjong-table .river-top { left: 34%; }.mahjong-table .river-left { left: 13%; }.mahjong-table .river-right { right: 13%; }
+  .hand .tile { width: clamp(20px, 5.2vw, 31px); }.turn-line { width: 88%; }.hand-actions { flex-wrap: wrap; }.hand-actions .action-button { min-width: 74px; min-height: 38px; font-size: 14px; }
+}
+
+/* Narrow screens use a readable top-down crop instead of squeezing four walls. */
+@media (max-width: 600px) {
+  body[data-view="table"] .game-stage { align-items: start; align-content: start; }
+  body[data-view="table"] .table-scene { margin-top: 42px; }
+  body[data-view="table"] .wall-left,
+  body[data-view="table"] .wall-right,
+  body[data-view="table"] .wall-bottom { display: none; }
+  body[data-view="table"] .wall-top {
+    display: flex;
+    left: 50%;
+    top: 5%;
+    transform: translateX(-50%);
+  }
+  body[data-view="table"] .wall-tile { width: 10px; height: 22px; }
+  body[data-view="table"] .mahjong-table .table-center { left: 38%; top: 35%; width: 24%; }
+  body[data-view="table"] .mahjong-table .marker-left { left: 24%; }
+  body[data-view="table"] .mahjong-table .marker-right { right: 24%; }
+  body[data-view="table"] .hand-dock { margin-top: 30px; }
+  body[data-view="table"] .turn-line { min-height: 48px; }
+  body[data-view="table"] .turn-line p { display: none; }
+}
+
+/* v0.6 — viewport-aware layout: wide, short, tablet and phone each reflow. */
+body[data-view="table"] .game-stage { min-height: 100dvh; height: 100dvh; }
+body[data-view="table"] .table-view { min-height: 100dvh; height: 100dvh; }
+
+@media (min-width: 1600px) and (min-height: 850px) {
+  body[data-view="table"] .table-scene {
+    width: min(calc(100vw - 210px), calc((100dvh - 260px) * 1.72), 1320px);
+  }
+  body[data-view="table"] .hand-dock { width: min(calc(100vw - 150px), 1280px); }
+  body[data-view="table"] .hand .tile { width: clamp(54px, 4vw, 72px); }
+}
+
+@media (min-width: 901px) and (max-height: 760px) {
+  body[data-view="table"] .game-stage { grid-template-rows: 18px minmax(0, 1fr) auto; padding-top: 8px; padding-bottom: 8px; }
+  body[data-view="table"] .table-scene {
+    width: min(75vw, calc((100dvh - 250px) * 1.72), 980px);
+    margin-top: 44px;
+  }
+  body[data-view="table"] .turn-line { min-height: 38px; margin-bottom: 5px; }
+  body[data-view="table"] .hand { min-height: 76px; }
+  body[data-view="table"] .hand .tile { width: clamp(39px, 4.25vw, 59px); }
+  body[data-view="table"] .hand-actions { margin-top: 6px; }
+  body[data-view="table"] .hand-actions .action-button { min-height: 32px; }
+}
+
+@media (min-width: 601px) and (max-width: 900px) {
+  body[data-view="table"] .game-stage { padding-left: 72px; padding-right: 10px; }
+  body[data-view="table"] .table-scene {
+    width: min(calc(100vw - 112px), calc((100dvh - 250px) * 1.58));
+    margin-top: 50px;
+  }
+  body[data-view="table"] .hand-dock { width: calc(100vw - 88px); }
+  body[data-view="table"] .hand .tile {
+    width: clamp(33px, calc((100vw - 160px) / 14), 54px);
+  }
+  body[data-view="table"] .turn-line { width: 100%; }
+}
+
+@media (max-width: 600px) and (orientation: portrait) {
+  body[data-view="table"] .game-stage { grid-template-rows: 18px auto auto; }
+  body[data-view="table"] .table-scene { width: calc(100vw - 68px); }
+  body[data-view="table"] .hand-dock { width: calc(100vw - 58px); }
+  body[data-view="table"] .hand .tile {
+    width: clamp(19px, calc((100vw - 82px) / 14), 34px);
+  }
+}
+
+@media (max-width: 900px) and (max-height: 600px) and (orientation: landscape) {
+  body[data-view="table"] { overflow: hidden; }
+  body[data-view="table"] .game-stage {
+    grid-template-columns: minmax(300px, 54%) minmax(0, 46%);
+    grid-template-rows: 20px minmax(0, 1fr);
+    gap: 0 10px;
+    min-height: 100dvh;
+    height: 100dvh;
+    padding: 6px 8px 8px 56px;
+  }
+  body[data-view="table"] .stage-meta { grid-column: 1 / -1; width: 100%; padding-left: 12px; }
+  body[data-view="table"] .table-scene {
+    grid-column: 1;
+    grid-row: 2;
+    width: min(calc(54vw - 65px), calc((100dvh - 76px) * 1.08));
+    margin: 42px auto 0;
+  }
+  body[data-view="table"] .mahjong-table { aspect-ratio: 1.08; }
+  body[data-view="table"] .wall-left,
+  body[data-view="table"] .wall-right,
+  body[data-view="table"] .wall-bottom { display: none; }
+  body[data-view="table"] .wall-top { display: flex; left: 50%; top: 5%; transform: translateX(-50%); }
+  body[data-view="table"] .wall-tile { width: 10px; height: 22px; }
+  body[data-view="table"] .mahjong-table .table-center { left: 38%; top: 35%; width: 24%; }
+  body[data-view="table"] .mahjong-table .marker-left { left: 24%; }
+  body[data-view="table"] .mahjong-table .marker-right { right: 24%; }
+  body[data-view="table"] .plaque-top { top: -42px; }
+  body[data-view="table"] .hand-dock {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: center;
+    width: 100%;
+    margin: 0;
+    padding: 0 6px;
+  }
+  body[data-view="table"] .turn-line { min-height: 43px; }
+  body[data-view="table"] .player-score { display: none; }
+  body[data-view="table"] .hand { min-height: 62px; padding: 0; gap: 1px; }
+  body[data-view="table"] .hand .tile { width: clamp(19px, calc((46vw - 52px) / 14), 30px); }
+  body[data-view="table"] .hand-actions { margin-top: 12px; }
+  body[data-view="table"] .hand-actions .action-button { min-width: 68px; min-height: 34px; padding-inline: 9px; font-size: 12px; }
+}
+
+/* v0.7 — persistent, high-contrast call dock */
+body[data-view="table"] .hand-actions {
+  align-items: stretch;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  border: 1px solid rgba(36,58,58,.16);
+  border-radius: 5px;
+  background: rgba(226,219,204,.72);
+}
+body[data-view="table"] .call-status {
+  display: grid;
+  place-items: center;
+  min-width: 58px;
+  padding: 0 10px;
+  border-right: 1px solid rgba(36,58,58,.18);
+  color: #6b706a;
+  font-size: 11px;
+  letter-spacing: .12em;
+}
+body[data-view="table"] .call-action {
+  display: grid;
+  grid-template-columns: auto auto;
+  place-content: center;
+  gap: 7px;
+  min-width: 92px;
+  border: 1px solid #294a50;
+  background: #f1ebdf;
+}
+body[data-view="table"] .call-action b { font-size: 20px; line-height: 1; }
+body[data-view="table"] .call-action small { align-self: end; color: #707772; font: 9px/1 system-ui,sans-serif; letter-spacing: .12em; }
+body[data-view="table"] .call-action:disabled { opacity: .48; filter: grayscale(.55); }
+body[data-view="table"] .hand-actions.call-ready {
+  border-color: rgba(164,63,48,.55);
+  background: rgba(164,63,48,.08);
+  box-shadow: 0 0 0 3px rgba(164,63,48,.08), 0 8px 20px rgba(74,49,38,.13);
+  animation: call-dock-pulse 1.1s ease-in-out infinite alternate;
+}
+body[data-view="table"] .hand-actions.call-ready .call-status { color: #9d392c; font-weight: 700; }
+body[data-view="table"] .hand-actions.call-ready .call-action:not(:disabled) { color: #fff7e9; border-color: #a43f30; background: #a43f30; box-shadow: 0 4px 0 #743126; }
+body[data-view="table"] .hand-actions.call-ready .call-action:not(:disabled) small { color: #f2d9ce; }
+body[data-view="table"] .skip-action { border-color: #6e756e; }
+body[data-view="table"] .meld-area:not(:empty) { display: flex; justify-content: flex-end; gap: 8px; min-height: 42px; margin: -4px 6px 4px; }
+.choice-panel { flex-basis: 100%; display: flex; justify-content: center; gap: 8px; padding: 7px; border: 1px solid rgba(132,104,67,.35); background: rgba(245,238,222,.96); }
+.choice-panel.hidden { display: none; }
+.choice-panel button { display: flex; gap: 2px; align-items: center; min-height: 42px; padding: 4px 9px; border: 1px solid #263c4b; background: #f4ecdc; cursor: pointer; }
+.choice-panel img { width: 23px; height: 32px; object-fit: contain; }
+.river-tile.riichi { transform: rotate(90deg); margin-inline: 5px; }
+.river-tile.claimed { opacity: .28; }
+.tile.red-five { background: #f3e5d7; }
+body[data-view="table"] .meld-group { display: inline-flex; padding: 3px; border: 1px solid rgba(42,55,51,.2); background: rgba(238,232,218,.9); box-shadow: 0 3px 5px rgba(40,42,35,.14); }
+body[data-view="table"] .meld-group i { display: block; width: 27px; height: 38px; padding: 1px; background: #eee7d8; }
+body[data-view="table"] .meld-group img { width: 100%; height: 100%; object-fit: contain; }
+@keyframes call-dock-pulse { from { transform: translateY(0); } to { transform: translateY(-2px); } }
+
+@media (max-width: 600px), (max-height: 600px) {
+  body[data-view="table"] .hand-actions { padding: 5px; gap: 4px; }
+  body[data-view="table"] .call-status { display: none; }
+  body[data-view="table"] .call-action { min-width: 58px; padding-inline: 7px; gap: 3px; }
+  body[data-view="table"] .call-action b { font-size: 16px; }
+  body[data-view="table"] .call-action small { display: none; }
+}
+
+/* v0.8 — four-player / three-player mode selection */
+.mode-selector { display: grid; grid-template-columns: repeat(2,minmax(0,190px)); gap: 9px; margin-top: 26px; }
+.mode-selector button { padding: 13px 15px; text-align: left; border: 1px solid rgba(41,74,80,.35); background: rgba(244,238,224,.62); color: #294a50; cursor: pointer; }
+.mode-selector button b,.mode-selector button small { display: block; }.mode-selector button b { font-size: 15px; }.mode-selector button small { margin-top: 4px; color: #70756f; font-size: 10px; }
+.mode-selector button.active { color: #fff5e5; border-color: #a43f30; background: #a43f30; box-shadow: 0 4px 0 #743126; }.mode-selector button.active small { color: #f2d8ce; }
+.sidebar-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 14px; }
+.sidebar-mode button { padding: 8px; border: 1px solid rgba(41,74,80,.35); background: transparent; cursor: pointer; }
+.sidebar-mode button.active { color: #fff4e4; border-color: #a43f30; background: #a43f30; }
+body[data-players="3"] .plaque-left,
+body[data-players="3"] .wall-left,
+body[data-players="3"] #river3,
+body[data-players="3"] .marker-left { display: none !important; }
+body[data-players="3"] .mahjong-table::after { content: "三人麻雀"; position: absolute; left: 8%; top: 46%; color: rgba(31,58,67,.30); font-size: 11px; letter-spacing: .26em; transform: rotate(-90deg); }
+@media (max-width:600px) { .mode-selector { grid-template-columns: 1fr 1fr; }.mode-selector button { padding: 11px 9px; } }
