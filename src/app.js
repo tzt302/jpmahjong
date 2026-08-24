@@ -3,6 +3,7 @@ import { tileFaceMarkup } from './tiles.js';
 import { FullGameSession } from './full-game.js';
 import { SanmaGameSession } from './sanma-game.js';
 import { WIND_LABELS, coreTileToNumber, meldTiles, tableSnapshot } from './full-game-view.js';
+import { Majiang } from './riichi-core.js';
 import { QUESTIONS } from './questions.js';
 
 const $ = selector => document.querySelector(selector);
@@ -344,14 +345,47 @@ function sanmaPaymentText(result, winner) {
   return `自摸 庄家 ${(winner.scoreResult.tsumoDealerPays + honba).toLocaleString('zh-CN')}点／子家 ${(winner.scoreResult.tsumoChild + honba).toLocaleString('zh-CN')}点`;
 }
 
-function sanmaWinnerLine(result, winner) {
-  const yaku = (winner.yakuList || winner.yaku || [])
-    .map(item => SANMA_YAKU_LABELS[item.name] || item.name)
-    .join(' · ');
-  const dora = winner.doraCount ? ` · 宝牌×${winner.doraCount}` : '';
-  const score = result.type === 'nagashi' ? '' : `　${winner.fu || 0}符 ${winner.totalHan || winner.han || 0}番`;
-  const payment = sanmaPaymentText(result, winner);
-  return `${sanmaSeatLabel(winner.winner)}　${yaku || '和牌'}${dora}${score}${payment ? `　${payment}` : ''}`;
+const YONMA_YAKU_LABELS = Object.freeze({
+  'ダブル立直': '双立直', '一発': '一发', '門前清自摸和': '门前清自摸和',
+  '役牌 發': '役牌 发', '嶺上開花': '岭上开花', '槍槓': '抢杠', '河底撈魚': '河底捞鱼',
+  '一盃口': '一杯口', '三色同順': '三色同顺', '一気通貫': '一气通贯',
+  '混全帯幺九': '混全带幺九', '対々和': '对对和', '三色同刻': '三色同刻',
+  '混老頭': '混老头', '七対子': '七对子', '純全帯幺九': '纯全带幺九',
+  '二盃口': '二杯口', '流し満貫': '流局满贯', 'ドラ': '宝牌',
+  '赤ドラ': '赤宝牌', '裏ドラ': '里宝牌'
+});
+
+function hanText(value) {
+  if (value === '**') return '双倍役满';
+  if (value === '*') return '役满';
+  return `${Number(value) || 0}番`;
+}
+
+function resultTile(tile) {
+  if (tile == null || tile < 0) return null;
+  return { tile, label: TILE_LABELS[tile] || '和了牌' };
+}
+
+function sanmaResultGroup(result, winner) {
+  const items = (winner.yakuList || winner.yaku || []).map(item => ({
+    name: SANMA_YAKU_LABELS[item.name] || item.name,
+    value: winner.isYakuman
+      ? (Number(item.han) >= 26 ? '双倍役满' : '役满')
+      : hanText(item.han ?? item.fanshu ?? (result.type === 'nagashi' ? winner.han : 0))
+  }));
+  const breakdown = winner.doraBreakdown || {};
+  [['表宝牌', breakdown.visible], ['里宝牌', breakdown.ura], ['赤宝牌', breakdown.aka], ['拔北', breakdown.kita]]
+    .forEach(([name, count]) => { if (count) items.push({ name, value: `${count}番` }); });
+  if (!winner.doraBreakdown && winner.doraCount) items.push({ name: '宝牌', value: `${winner.doraCount}番` });
+  return {
+    heading: `${sanmaSeatLabel(winner.winner)} · ${result.type === 'tsumo' ? '自摸' : result.type === 'ron' ? '荣和' : '流局满贯'}`,
+    summary: winner.isYakuman
+      ? (Number(winner.totalHan) >= 26 ? `${Math.floor(winner.totalHan / 13)}倍役满` : '役满')
+      : `${winner.fu || 0}符 · ${winner.totalHan || winner.han || 0}番`,
+    payment: sanmaPaymentText(result, winner),
+    tile: resultTile(winner.winningTile),
+    items
+  };
 }
 
 function showSanmaResult(result) {
@@ -359,18 +393,73 @@ function showSanmaResult(result) {
   const title = result.type === 'nagashi' ? '流局满贯'
     : result.type === 'tsumo' ? `${sanmaSeatLabel(winner.winner)} 自摸`
     : `${result.winners.length > 1 ? '双响' : '荣和'}`;
-  showResult(title, result.winners.map(item => sanmaWinnerLine(result, item)).join('\n'));
+  showResult(title, result.winners.length > 1 ? '各家和牌分别结算' : '役种与得点明细', result.winners.map(item => sanmaResultGroup(result, item)));
 }
 
 function showHuleResult(result) {
-  const yakus = (result.hupai || []).map(yaku => yaku.name).join(' · ');
-  const limit = result.damanguan ? `${result.damanguan}倍役满` : `${result.fu || 0}符 ${result.fanshu || 0}番`;
-  showResult(`${WIND_LABELS[result.l]}家 ${result.baojia == null ? '自摸' : '荣和'}`, `${yakus || '和牌'}　${limit}　${Number(result.defen || 0).toLocaleString('zh-CN')}点`);
+  const limit = result.damanguan
+    ? (result.damanguan === 1 ? '役满' : `${result.damanguan}倍役满`)
+    : `${result.fu || 0}符 ${result.fanshu || 0}番`;
+  let winTile = null;
+  try { winTile = coreTileToNumber(Majiang.Shoupai.fromString(result.shoupai)._zimo); } catch {}
+  const group = {
+    heading: `${WIND_LABELS[result.l]}家 · ${result.baojia == null ? '自摸' : '荣和'}`,
+    summary: limit.replace(' ', ' · '),
+    payment: `和牌得点 ${Number(result.defen || 0).toLocaleString('zh-CN')}点`,
+    tile: resultTile(winTile),
+    items: (result.hupai || []).map(yaku => ({
+      name: YONMA_YAKU_LABELS[yaku.name] || yaku.name,
+      value: hanText(yaku.fanshu)
+    }))
+  };
+  showResult(`${WIND_LABELS[result.l]}家 ${result.baojia == null ? '自摸' : '荣和'}`, '役种与得点明细', [group]);
 }
 
-function showResult(title, copy) {
+function showResult(title, copy, groups = []) {
   $('#resultTitle').textContent = title;
   $('#resultCopy').textContent = copy;
+  const breakdown = $('#resultBreakdown');
+  breakdown.replaceChildren();
+  groups.forEach(group => {
+    const section = document.createElement('section');
+    section.className = 'result-group';
+    const head = document.createElement('div');
+    head.className = 'result-group-head';
+    const heading = document.createElement('div');
+    const who = document.createElement('strong');
+    const summary = document.createElement('span');
+    who.textContent = group.heading;
+    summary.textContent = group.summary;
+    heading.append(who, summary);
+    head.append(heading);
+    if (group.tile) {
+      const tile = document.createElement('div');
+      tile.className = 'result-winning-tile';
+      tile.setAttribute('aria-label', `和了牌 ${group.tile.label}`);
+      tile.innerHTML = `${tileFaceMarkup(group.tile.tile)}<small>和了牌</small>`;
+      head.append(tile);
+    }
+    section.append(head);
+    const list = document.createElement('ul');
+    list.className = 'result-yaku-list';
+    (group.items.length ? group.items : [{ name: '和牌', value: group.summary }]).forEach(item => {
+      const row = document.createElement('li');
+      const name = document.createElement('span');
+      const value = document.createElement('b');
+      name.textContent = item.name;
+      value.textContent = item.value;
+      row.append(name, value);
+      list.append(row);
+    });
+    section.append(list);
+    if (group.payment) {
+      const payment = document.createElement('p');
+      payment.className = 'result-payment';
+      payment.textContent = group.payment;
+      section.append(payment);
+    }
+    breakdown.append(section);
+  });
   $('#resultModal').classList.remove('hidden');
 }
 

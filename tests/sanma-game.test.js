@@ -96,6 +96,7 @@ test('riichi win counts ippatsu and ura dora while aka tiles exist in the wall',
   const result = evaluateWin(state, 0, true, 27);
   assert.ok(result.yakuList.some(yaku => yaku.name === 'ippatsu'));
   assert.equal(result.doraCount, 1, 'the concealed ura indicator adds one dora');
+  assert.deepEqual(result.doraBreakdown, { visible: 0, ura: 1, aka: 0, kita: 0 });
   assert.equal(createWall(3).akaPositions.size, 2, '5p and 5s each have one red copy');
 });
 

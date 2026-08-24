@@ -876,13 +876,14 @@ function countDora(state, winner, isTsumo, winningTile) {
   if (!isTsumo) {
     allTiles.push(winningTile);
   }
-  let count = 0;
+  let visible = 0;
   for (const indicator of state.doraMarkers) {
     const doraTile = doraFromIndicator(indicator, isSanma);
     for (const t of allTiles) {
-      if (t === doraTile) count++;
+      if (t === doraTile) visible++;
     }
   }
+  let ura = 0;
   if (player.riichi) {
     const uraMarkers = getUraDoraMarkers({
       tiles: state.wall,
@@ -894,27 +895,25 @@ function countDora(state, winner, isTsumo, winningTile) {
     });
     for (const indicator of uraMarkers) {
       const doraTile = doraFromIndicator(indicator, isSanma);
-      for (const t of allTiles) if (t === doraTile) count++;
+      for (const t of allTiles) if (t === doraTile) ura++;
     }
   }
-  if (player.akaCount && player.akaCount > 0) {
-    count += player.akaCount;
-  }
-  if (isSanma && player.kitaCount > 0) {
-    count += player.kitaCount;
+  const aka = Math.max(0, player.akaCount || 0);
+  let kita = isSanma ? Math.max(0, player.kitaCount || 0) : 0;
+  if (kita > 0) {
     for (const indicator of state.doraMarkers) {
       if (doraFromIndicator(indicator, isSanma) === 30) {
-        count += player.kitaCount;
+        visible += player.kitaCount;
       }
     }
   }
-  return count;
+  return { visible, ura, aka, kita, total: visible + ura + aka + kita };
 }
 function evaluateWin(state, winner, isTsumo, winningTile) {
   const ctx = buildYakuContext(state, winner, isTsumo, winningTile);
   const player = state.players[winner];
   const isDealer = winner === state.dealer;
-  const doraCount = countDora(state, winner, isTsumo, winningTile);
+  const dora = countDora(state, winner, isTsumo, winningTile);
   const hand13 = ctx.hand;
   const concealedPlusWin = [...hand13, winningTile];
   const decomps = decomposeAllWinningHands(concealedPlusWin);
@@ -926,7 +925,7 @@ function evaluateWin(state, winner, isTsumo, winningTile) {
   for (const decomp of decomps) {
     const yakuResult = evaluateYakuForDecomp(ctx, decomp, concealedPlusWin);
     if (yakuResult.yaku.length === 0) continue;
-    const totalHan = yakuResult.isYakuman ? yakuResult.totalHan : yakuResult.totalHan + doraCount;
+    const totalHan = yakuResult.isYakuman ? yakuResult.totalHan : yakuResult.totalHan + dora.total;
     const fu = computeFu(decomp, ctx, player.melds, yakuResult.yaku, winningTile, isTsumo);
     const basic = basicPoints(totalHan, fu);
     const isImprovement = bestBasic < 0 || yakuResult.isYakuman && !bestYaku.isYakuman || yakuResult.isYakuman === bestYaku.isYakuman && basic > bestBasic || yakuResult.isYakuman === bestYaku.isYakuman && basic === bestBasic && yakuResult.yaku.length > bestYaku.yaku.length;
@@ -956,7 +955,8 @@ function evaluateWin(state, winner, isTsumo, winningTile) {
     winner,
     yakuList: bestYaku.yaku,
     yakuHan: bestYaku.totalHan,
-    doraCount: hasYaku && !bestYaku.isYakuman ? doraCount : 0,
+    doraCount: hasYaku && !bestYaku.isYakuman ? dora.total : 0,
+    doraBreakdown: hasYaku && !bestYaku.isYakuman ? { visible: dora.visible, ura: dora.ura, aka: dora.aka, kita: dora.kita } : { visible: 0, ura: 0, aka: 0, kita: 0 },
     totalHan: hasYaku ? bestTotalHan : 0,
     fu: hasYaku ? bestFu : 30,
     scoreResult: bestScore ?? fallbackScore,

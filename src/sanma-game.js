@@ -193,7 +193,7 @@ export function settleSanmaRon(state, winners) {
       scores[loser] -= payment;
     }
     scores[winner] += payment + (index === 0 ? state.kyotaku * 1000 : 0);
-    details.push({ winner, loser, pao, ...result, payment });
+    details.push({ winner, loser, pao, winningTile: tile, ...result, payment });
   });
   const dealerWinner = winners.includes(state.dealer);
   return {
@@ -475,7 +475,7 @@ export class SanmaGameSession {
   handleRoundEnd() {
     if (!this.lastResult && this.state.phase === 'tsumo_win') {
       const winner = this.state.currentPlayer;
-      this.lastResult = { type: 'tsumo', winners: [{ winner, ...evaluateWin(this.state, winner, true, this.state.lastDrawnTile) }] };
+      this.lastResult = { type: 'tsumo', winners: [{ winner, winningTile: this.state.lastDrawnTile, ...evaluateWin(this.state, winner, true, this.state.lastDrawnTile) }] };
     }
     if (!this.lastResult && this.state.phase === 'ryukyoku') {
       this.lastResult = { type: 'ryukyoku', reason: this.state.ryukyokuReason || 'exhaustive' };

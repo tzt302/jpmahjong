@@ -18,6 +18,8 @@ export interface WinEvaluation {
   /** Visible dora + uradora + aka dora + sanma kita (1 per kita,
    *  +1 again per kita if any dora indicator points to North). */
   doraCount: number
+  /** Dora categories kept separately for the result screen. */
+  doraBreakdown: DoraBreakdown
   /** yakuHan + doraCount. */
   totalHan: number
   fu: number
@@ -26,6 +28,13 @@ export interface WinEvaluation {
   /** True iff the winning hand has at least one yaku (yakuman counts).
    *  Dora and kita alone do not satisfy this. */
   hasYaku: boolean
+}
+
+export interface DoraBreakdown {
+  visible: number
+  ura: number
+  aka: number
+  kita: number
 }
 
 /**
@@ -125,7 +134,7 @@ function countDora(
   winner: Player,
   isTsumo: boolean,
   winningTile: TileType,
-): number {
+): DoraBreakdown & { total: number } {
   const isSanma = state.playerCount === 3
   const player = state.players[winner]
 
@@ -141,14 +150,15 @@ function countDora(
     allTiles.push(winningTile)
   }
 
-  let count = 0
+  let visible = 0
   for (const indicator of state.doraMarkers) {
     const doraTile = doraFromIndicator(indicator, isSanma)
     for (const t of allTiles) {
-      if (t === doraTile) count++
+      if (t === doraTile) visible++
     }
   }
 
+  let ura = 0
   if (player.riichi) {
     const uraMarkers = getUraDoraMarkers({
       tiles: state.wall,
@@ -160,28 +170,26 @@ function countDora(
     })
     for (const indicator of uraMarkers) {
       const doraTile = doraFromIndicator(indicator, isSanma)
-      for (const t of allTiles) if (t === doraTile) count++
+      for (const t of allTiles) if (t === doraTile) ura++
     }
   }
 
   // Aka-dora: +1 han per red-5 tile owned by the winner.
-  if (player.akaCount && player.akaCount > 0) {
-    count += player.akaCount
-  }
+  const aka = Math.max(0, player.akaCount || 0)
 
   // Sanma: kita itself is +1 dora per kita.
-  if (isSanma && player.kitaCount > 0) {
-    count += player.kitaCount
+  let kita = isSanma ? Math.max(0, player.kitaCount || 0) : 0
+  if (kita > 0) {
     // If any dora indicator points to North (tile 30), each kita counts
     // again (the kita tiles themselves are dora indicated tiles).
     for (const indicator of state.doraMarkers) {
       if (doraFromIndicator(indicator, isSanma) === 30) {
-        count += player.kitaCount
+        visible += player.kitaCount
       }
     }
   }
 
-  return count
+  return { visible, ura, aka, kita, total: visible + ura + aka + kita }
 }
 
 /**
@@ -202,7 +210,7 @@ export function evaluateWin(
 
   // Dora is independent of decomposition (it counts tile copies, not
   // shape), so compute it once. Yakuman ignores dora.
-  const doraCount = countDora(state, winner, isTsumo, winningTile)
+  const dora = countDora(state, winner, isTsumo, winningTile)
 
   // Enumerate every valid decomposition of (hand13 + winTile) and score
   // each one fully (yaku + fu + basicPoints). Pick the decomp with the
@@ -230,7 +238,7 @@ export function evaluateWin(
 
     const totalHan = yakuResult.isYakuman
       ? yakuResult.totalHan
-      : yakuResult.totalHan + doraCount
+      : yakuResult.totalHan + dora.total
 
     const fu = computeFu(decomp, ctx, player.melds, yakuResult.yaku, winningTile, isTsumo)
     const basic = basicPoints(totalHan, fu)
@@ -267,7 +275,10 @@ export function evaluateWin(
     winner,
     yakuList: bestYaku.yaku,
     yakuHan: bestYaku.totalHan,
-    doraCount: hasYaku && !bestYaku.isYakuman ? doraCount : 0,
+    doraCount: hasYaku && !bestYaku.isYakuman ? dora.total : 0,
+    doraBreakdown: hasYaku && !bestYaku.isYakuman
+      ? { visible: dora.visible, ura: dora.ura, aka: dora.aka, kita: dora.kita }
+      : { visible: 0, ura: 0, aka: 0, kita: 0 },
     totalHan: hasYaku ? bestTotalHan : 0,
     fu: hasYaku ? bestFu : 30,
     scoreResult: bestScore ?? fallbackScore,
