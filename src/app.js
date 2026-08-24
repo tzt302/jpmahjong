@@ -1,7 +1,8 @@
 import { TILE_LABELS } from './engine.js';
 import { tileFaceMarkup } from './tiles.js';
 import { FullGameSession } from './full-game.js';
-import { WIND_LABELS, meldTiles, tableSnapshot } from './full-game-view.js';
+import { SanmaGameSession } from './sanma-game.js';
+import { WIND_LABELS, coreTileToNumber, meldTiles, tableSnapshot } from './full-game-view.js';
 import { QUESTIONS } from './questions.js';
 
 const $ = selector => document.querySelector(selector);
@@ -116,13 +117,13 @@ function updateModeUI() {
 
 function startGame() {
   game?.stop?.();
-  selectedPlayerCount = 4;
-  document.body.dataset.players = '4';
+  document.body.dataset.players = String(selectedPlayerCount);
   botBusy = false;
   riichiArmed = false;
   $('#resultModal').classList.add('hidden');
-  const session = new FullGameSession({
-    speed: 2,
+  const Session = selectedPlayerCount === 3 ? SanmaGameSession : FullGameSession;
+  const session = new Session({
+    speed: selectedPlayerCount === 3 ? 380 : 2,
     onEvent: handleCoreEvent,
     onDecision: handleDecision,
     onComplete: paipu => { game.paipu = paipu; }
@@ -136,19 +137,21 @@ function renderGame() {
   if (!snapshot) return;
   const pending = game.human.pending;
   const discardTurn = ['draw', 'post-call-discard'].includes(pending?.kind);
-  const responseTurn = ['discard-response', 'kan-response'].includes(pending?.kind);
+  const responseTurn = ['discard-response', 'kan-response', 'kita-choice'].includes(pending?.kind);
   const currentSeat = snapshot.seats.find(seat => seat.position === snapshot.currentPosition);
   $('#roundText').textContent = snapshot.roundLabel;
   $('.sidebar-content h2').textContent = snapshot.roundLabel;
   $('.table-center b').textContent = snapshot.roundLabel;
   $('.table-center span').textContent = `供托 × ${snapshot.riichiSticks}　 本场 × ${snapshot.honba}`;
-  $('#wallText').textContent = `四麻 · 牌山 ${snapshot.wallRemaining}`;
+  $('#wallText').textContent = `${game.mode === 'sanma' ? '三麻' : '四麻'} · 牌山 ${snapshot.wallRemaining}`;
   $('#centerWall').textContent = snapshot.wallRemaining;
-  $('.rule-note span').innerHTML = '完整四人立直麻将<br>半庄 · 赤牌 · 食断 · 途中流局';
+  $('.rule-note span').innerHTML = game.mode === 'sanma'
+    ? '三人立直麻将<br>无二万至八万 · 拔北 · 三麻自摸损'
+    : '完整四人立直麻将<br>半庄 · 赤牌 · 食断 · 途中流局';
   $('#turnSeal').textContent = currentSeat?.windLabel || snapshot.seats[0].windLabel;
   $('#turnLabel').textContent = discardTurn ? 'YOUR TURN' : 'MATCH IN PROGRESS';
-  $('#turnName').textContent = `你 · ${WIND_LABELS[snapshot.humanWind]}家`;
-  $('#turnMessage').textContent = responseTurn ? '可以和牌或鸣牌，也可以跳过' : discardTurn ? (riichiArmed ? '选择立直宣言牌' : '选择一张牌打出') : '电脑雀士正在行动…';
+  $('#turnName').textContent = `你 · ${WIND_LABELS[snapshot.humanWind]}家${snapshot.seats[0].kitaCount ? ` · 北×${snapshot.seats[0].kitaCount}` : ''}`;
+  $('#turnMessage').textContent = pending?.kind === 'kita-choice' ? '选择拔北，或把北留在手牌中' : responseTurn ? '可以和牌或鸣牌，也可以跳过' : discardTurn ? (riichiArmed ? '选择立直宣言牌' : '选择一张牌打出') : '电脑雀士正在行动…';
   $('.player-score').textContent = snapshot.seats[0].score.toLocaleString('zh-CN');
 
   const plaqueSelectors = { 1: '.plaque-right', 2: '.plaque-top', 3: '.plaque-left' };
@@ -158,12 +161,12 @@ function renderGame() {
     const plaque = plaqueSelectors[seat.position] && $(plaqueSelectors[seat.position]);
     if (plaque) {
       plaque.querySelector('b').textContent = seat.windLabel;
-      plaque.querySelector('span').textContent = ['你', '竹林の道', '静寂の庭', '月下の牌'][seat.playerId];
+      plaque.querySelector('span').textContent = ['你', '竹林の道', '静寂の庭', '月下の牌'][seat.playerId] + (seat.kitaCount ? ` · 北×${seat.kitaCount}` : '');
       plaque.querySelector('strong').textContent = seat.score.toLocaleString('zh-CN');
     }
     $(`#river${seat.position}`).innerHTML = seat.river.map((tile, index) => `<span class="river-tile ${tile.riichi ? 'riichi' : ''} ${tile.claimed ? 'claimed' : ''} ${seat.position === lastDiscardPlayer && index === seat.river.length - 1 ? 'land' : ''}">${tileFaceMarkup(tile.tile)}</span>`).join('');
   });
-  $('#seatList').innerHTML = snapshot.seats.map(seat => `<li class="${seat.position === snapshot.currentPosition ? 'current' : ''}"><b>${seat.human ? '你' : ['你', '竹林', '静寂', '月下'][seat.playerId]} · ${seat.windLabel}家</b><span>${seat.score.toLocaleString('zh-CN')} 点</span></li>`).join('');
+  $('#seatList').innerHTML = snapshot.seats.map(seat => `<li class="${seat.position === snapshot.currentPosition ? 'current' : ''}"><b>${seat.human ? '你' : ['你', '竹林', '静寂', '月下'][seat.playerId]} · ${seat.windLabel}家${seat.kitaCount ? ` · 北×${seat.kitaCount}` : ''}</b><span>${seat.score.toLocaleString('zh-CN')} 点</span></li>`).join('');
   $('#doraTile').innerHTML = snapshot.doraIndicators.map(tile => `<span>${tileFaceMarkup(tile.tile)}</span>`).join('');
   const humanSeat = snapshot.seats[0];
   $('#meldArea').innerHTML = humanSeat.melds.map(meld => `<span class="meld-group">${meld.tiles.map(tile => `<i>${tileFaceMarkup(tile.tile)}</i>`).join('')}</span>`).join('');
@@ -175,14 +178,18 @@ function renderGame() {
   $('#ponButton').disabled = !calls.some(meld => meldType(meld) === 'pon');
   const kans = [...calls.filter(meld => meldType(meld) === 'kan'), ...(pending?.options?.gang || [])];
   $('#kanButton').disabled = !kans.length;
+  $('#kitaButton').classList.toggle('hidden', game.mode !== 'sanma');
+  $('#kitaButton').disabled = !pending?.options?.kita;
   $('#riichiButton').disabled = !(pending?.options?.riichi?.length);
   $('#riichiButton').classList.toggle('active', riichiArmed);
   $('#ronButton').disabled = !(responseTurn && pending?.options?.hule);
   $('#tsumoButton').classList.toggle('hidden', !(pending?.kind === 'draw' && pending.options.hule));
+  $('#abortButton').classList.toggle('hidden', !(pending?.kind === 'draw' && pending.options.daopai));
   $('#sortButton').disabled = true;
   $('#sortButton').textContent = '已自动理牌';
   $('#skipCallButton').classList.toggle('hidden', !responseTurn);
-  $('#callStatus').textContent = responseTurn ? '鸣牌机会' : '鸣牌';
+  $('#skipCallButton').textContent = pending?.kind === 'kita-choice' ? '保留北' : '跳过';
+  $('#callStatus').textContent = pending?.kind === 'kita-choice' ? '拔北选择' : responseTurn ? '鸣牌机会' : '鸣牌';
   $('.hand-actions').classList.toggle('call-ready', responseTurn);
   bindHand();
   lastDiscardPlayer = null;
@@ -215,6 +222,8 @@ function bindHand() {
 }
 
 function meldType(meld) {
+  if (meld.startsWith('pon:')) return 'pon';
+  if (meld.startsWith('daiminkan:') || meld.startsWith('ankan:') || meld.startsWith('kakan:')) return 'kan';
   const digits = meld.replace(/[^0-9]/g, '').replace(/0/g, '5');
   if (digits.length === 4) return 'kan';
   if (new Set(digits).size === 1) return 'pon';
@@ -234,7 +243,7 @@ function showChoices(choices) {
   if (!choices.length) return;
   if (choices.length === 1) return game.submit(choices[0].reply);
   const panel = $('#choicePanel');
-  panel.innerHTML = choices.map((choice, index) => `<button data-choice="${index}">${meldTiles(choice.code).map(tile => tileFaceMarkup(tile.tile)).join('')}</button>`).join('');
+  panel.innerHTML = choices.map((choice, index) => `<button data-choice="${index}">${choiceMarkup(choice.code)}</button>`).join('');
   panel.classList.remove('hidden');
   $$('[data-choice]').forEach(button => button.addEventListener('click', () => {
     panel.classList.add('hidden');
@@ -242,20 +251,40 @@ function showChoices(choices) {
   }));
 }
 
+function choiceMarkup(code) {
+  if (code.includes(':')) {
+    const [kind, value] = code.split(':');
+    const count = kind === 'pon' ? 3 : 4;
+    return tileFaceMarkup(Number(value)).repeat(count);
+  }
+  return meldTiles(code).map(tile => tileFaceMarkup(tile.tile)).join('');
+}
+
 $('#chiButton').addEventListener('click', () => useCall('chi'));
 $('#ponButton').addEventListener('click', () => useCall('pon'));
 $('#kanButton').addEventListener('click', () => useCall('kan'));
+$('#kitaButton').addEventListener('click', () => game.submit({ kita: true }));
 $('#skipCallButton').addEventListener('click', () => {
   game.submit({});
 });
 $('#riichiButton').addEventListener('click', () => { riichiArmed = !riichiArmed; renderGame(); });
 $('#ronButton').addEventListener('click', () => game.submit({ hule: '-' }));
 $('#tsumoButton').addEventListener('click', () => game.submit({ hule: '-' }));
+$('#abortButton').addEventListener('click', () => game.submit({ daopai: '-' }));
 
-function handleCoreEvent(event) {
+async function handleCoreEvent(event) {
+  const snapshot = tableSnapshot(game);
+  const actorPosition = event.payload?.l == null ? null
+    : snapshot?.seats.find(seat => game.mode === 'sanma' ? seat.playerId === event.payload.l : seat.wind === event.payload.l)?.position;
+  if ((event.type === 'zimo' || event.type === 'gangzimo') && actorPosition > 0) {
+    await animateWallDraw(actorPosition);
+  }
   if (event.type === 'dapai') {
-    const snapshot = tableSnapshot(game);
-    lastDiscardPlayer = snapshot?.seats.find(seat => seat.wind === event.payload.l)?.position ?? null;
+    lastDiscardPlayer = actorPosition ?? null;
+    if (actorPosition > 0) {
+      const tile = game.mode === 'sanma' ? event.payload.p : coreTileToNumber(event.payload.p);
+      await animateAiDiscard(actorPosition, tile);
+    }
     playTileSound();
   }
   renderGame();
@@ -266,13 +295,23 @@ function handleDecision(decision) {
   riichiArmed = false;
   if (decision.kind === 'round-result') {
     if (decision.options.hule) showHuleResult(decision.options.hule);
+    else if (decision.options.sanmaResult) showSanmaResult(decision.options.sanmaResult);
     else showResult(decision.options.pingju.name || '荒牌流局', '听牌罚符、本场与供托已由完整规则核心结算。');
   }
   else if (decision.kind === 'match-result') {
-    const scores = decision.payload.defen || [];
+    const scores = decision.payload.defen || decision.options.ranking?.map(item => item.score) || [];
     showResult('半庄结束', scores.map((score, index) => `${index + 1}位 ${score.toLocaleString('zh-CN')}点`).join('　'));
   }
   renderGame();
+}
+
+function showSanmaResult(result) {
+  const winner = result.winners[0];
+  const yaku = (winner.yakuList || winner.yaku || []).map(item => item.name).join(' · ');
+  const title = result.type === 'nagashi' ? '流し満貫'
+    : result.type === 'tsumo' ? `${WIND_LABELS[(winner.winner + 3 - game.state.dealer) % 3]}家 自摸`
+    : `${result.winners.length > 1 ? '双响' : '荣和'}`;
+  showResult(title, `${yaku || '和牌'}　${winner.fu || 0}符 ${winner.totalHan || winner.han || 0}番`);
 }
 
 function showHuleResult(result) {

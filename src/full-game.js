@@ -1,5 +1,53 @@
 import { Majiang, createStandardRule } from './riichi-core.js';
 
+export function chooseCoreDiscard(player, hand = player.shoupai) {
+  const legal = player.get_dapai(hand) || [];
+  let best = legal.at(-1);
+  let bestScore = [Infinity, Infinity];
+  for (const tile of legal) {
+    const next = hand.clone().dapai(tile);
+    const shanten = Majiang.Util.xiangting(next);
+    const waits = shanten === 0 ? Majiang.Util.tingpai(next).length : 0;
+    const score = [shanten, -waits];
+    if (score[0] < bestScore[0] || (score[0] === bestScore[0] && score[1] < bestScore[1])) {
+      best = tile;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function bestImprovingCall(player, discard) {
+  const direction = '_+=-'[(4 + discard.l - player._menfeng) % 4];
+  const callTile = discard.p.slice(0, 2) + direction;
+  const candidates = [
+    ...(player.get_gang_mianzi(player.shoupai, callTile) || []),
+    ...(player.get_peng_mianzi(player.shoupai, callTile) || []),
+    ...(player.get_chi_mianzi(player.shoupai, callTile) || [])
+  ];
+  const baseline = Majiang.Util.xiangting(player.shoupai);
+  let best = null;
+  for (const meld of candidates) {
+    const called = player.shoupai.clone().fulou(meld);
+    const isKan = meld.replace(/[^0-9]/g, '').length === 4;
+    const shanten = isKan
+      ? Majiang.Util.xiangting(called)
+      : Math.min(...(player.get_dapai(called) || []).map(tile => Majiang.Util.xiangting(called.clone().dapai(tile))));
+    if (shanten < baseline && (!best || shanten < best.shanten)) best = { meld, shanten };
+  }
+  return best?.meld || null;
+}
+
+function relativeDiscardTile(discard, menfeng) {
+  const direction = '_+=-'[(4 + discard.l - menfeng) % 4];
+  return discard.p.slice(0, 2) + direction;
+}
+
+function robbedKanTile(gang, menfeng) {
+  const direction = '_+=-'[(4 + gang.l - menfeng) % 4];
+  return gang.m[0] + (gang.m.match(/\d(?=[^\d]*$)/)?.[0] || '5') + direction;
+}
+
 export class AutoPlayer extends Majiang.Player {
   respond(reply = {}) { this._callback?.(reply); }
   action_kaiju() { this.respond(); }
@@ -7,18 +55,23 @@ export class AutoPlayer extends Majiang.Player {
   action_zimo(zimo, gangzimo) {
     if (zimo.l !== this._menfeng) return this.respond();
     if (this.allow_hule(this.shoupai, null, gangzimo ? 'lingshang' : null)) return this.respond({ hule: '-' });
-    const legal = this.get_dapai(this.shoupai);
-    const tile = legal.at(-1);
+    const gang = (this.get_gang_mianzi(this.shoupai, null) || [])[0];
+    if (gang && !this.shoupai.lizhi) return this.respond({ gang });
+    const tile = chooseCoreDiscard(this);
     const riichi = tile && this.allow_lizhi(this.shoupai, tile);
     this.respond({ dapai: tile + (riichi ? '*' : '') });
   }
   action_dapai(dapai) {
-    if (dapai.l !== this._menfeng && this.allow_hule(this.shoupai, dapai.p)) return this.respond({ hule: '-' });
+    if (dapai.l !== this._menfeng && this.allow_hule(this.shoupai, relativeDiscardTile(dapai, this._menfeng))) return this.respond({ hule: '-' });
+    if (dapai.l !== this._menfeng && !this.shoupai.lizhi) {
+      const fulou = bestImprovingCall(this, dapai);
+      if (fulou) return this.respond({ fulou });
+    }
     this.respond();
   }
-  action_fulou() { this.respond({ dapai: this.get_dapai(this.shoupai).at(-1) }); }
+  action_fulou() { this.respond({ dapai: chooseCoreDiscard(this) }); }
   action_gang(gang) {
-    if (gang.l !== this._menfeng && this.allow_hule(this.shoupai, gang.m.slice(-2))) return this.respond({ hule: '-' });
+    if (gang.l !== this._menfeng && this.allow_hule(this.shoupai, robbedKanTile(gang, this._menfeng), 'qianggang')) return this.respond({ hule: '-' });
     this.respond();
   }
   action_hule() { this.respond(); }
@@ -77,8 +130,7 @@ export class InteractivePlayer extends Majiang.Player {
   action_dapai(data) {
     this.emit('dapai', data);
     if (data.l === this._menfeng) return this.respond();
-    const direction = '_+=-'[(4 + data.l - this._menfeng) % 4];
-    const callTile = data.p.slice(0, 2) + direction;
+    const callTile = relativeDiscardTile(data, this._menfeng);
     const fulou = [
       ...(this.get_gang_mianzi(this.shoupai, callTile) || []),
       ...(this.get_peng_mianzi(this.shoupai, callTile) || []),
@@ -95,8 +147,7 @@ export class InteractivePlayer extends Majiang.Player {
   }
   action_gang(data) {
     this.emit('gang', data);
-    const direction = '_+=-'[(4 + data.l - this._menfeng) % 4];
-    const robbedTile = data.m[0] + (data.m.match(/\d(?=[^\d]*$)/)?.[0] || '5') + direction;
+    const robbedTile = robbedKanTile(data, this._menfeng);
     if (data.l !== this._menfeng && this.allow_hule(this.shoupai, robbedTile, 'qianggang')) {
       this.request('kan-response', { hule: true, fulou: [] }, data);
     }

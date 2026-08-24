@@ -1,11 +1,12 @@
 {
   "name": "jpmahjong",
-  "version": "0.8.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "和纸风玩家对战 AI 日本麻将网页版",
   "scripts": {
     "start": "npx --yes serve .",
+    "build:sanma-core": "node scripts/build-sanma-core.mjs",
     "test": "node --test"
   }
 }

@@ -56,6 +56,7 @@ export function relativeSeat(wind, humanWind) {
 }
 
 export function tableSnapshot(session) {
+  if (session?.mode === 'sanma') return sanmaTableSnapshot(session);
   const model = session.model;
   if (!model?.shan) return null;
   const humanWind = session.human._menfeng;
@@ -86,5 +87,53 @@ export function tableSnapshot(session) {
     hand,
     riichi: Boolean(model.shoupai[humanWind]?._lizhi),
     seats: seats.sort((a, b) => a.position - b.position)
+  };
+}
+
+function sanmaTableSnapshot(session) {
+  const state = session.state;
+  const handPlayer = state.players[0];
+  const akaLeft = new Map();
+  for (const tile of handPlayer.akaInHand || []) akaLeft.set(tile, (akaLeft.get(tile) || 0) + 1);
+  const hand = handPlayer.hand.map(tile => {
+    const red = (akaLeft.get(tile) || 0) > 0;
+    if (red) akaLeft.set(tile, akaLeft.get(tile) - 1);
+    return { code: String(tile), tile, red, drawn: false };
+  });
+  if (state.lastDrawnTile != null && state.currentPlayer === 0 && ['discard', 'kita_declare'].includes(state.phase)) {
+    const index = hand.map(item => item.tile).lastIndexOf(state.lastDrawnTile);
+    if (index >= 0) {
+      const [drawn] = hand.splice(index, 1);
+      hand.push({ ...drawn, drawn: true });
+    }
+  }
+  const seats = state.players.map((player, playerId) => {
+    const wind = (playerId + 3 - state.dealer) % 3;
+    return {
+      wind,
+      windLabel: WIND_LABELS[wind],
+      position: playerId,
+      playerId,
+      human: playerId === 0,
+      score: player.score,
+      kitaCount: player.kitaCount,
+      river: player.discards.map(discard => ({ tile: discard.tile, code: String(discard.tile), riichi: false, claimed: false })),
+      melds: player.melds.map(meld => ({ code: `${meld.type}:${meld.tiles[0]}`, tiles: meld.tiles.map(tile => ({ code: String(tile), tile, red: false })) }))
+    };
+  });
+  const handNumber = (state.roundNumber - 1) % 3 + 1;
+  return {
+    roundWind: state.roundWind,
+    handNumber,
+    roundLabel: `${WIND_LABELS[state.roundWind]}${handNumber}局`,
+    honba: state.honba,
+    riichiSticks: state.kyotaku,
+    wallRemaining: Math.max(0, state.rinshanIndex - 13 - state.wallIndex),
+    doraIndicators: state.doraMarkers.map(tile => ({ code: String(tile), tile })),
+    currentPosition: state.currentPlayer,
+    humanWind: (3 - state.dealer) % 3,
+    hand,
+    riichi: handPlayer.riichi,
+    seats
   };
 }
