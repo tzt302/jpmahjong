@@ -1036,6 +1036,7 @@ function createGame(opts = {}) {
     rinshanIndex: wall.rinshanIndex,
     akaPositions: wall.akaPositions,
     doraMarkers,
+    pendingKanDora: 0,
     players: hands.map(makePlayer),
     currentPlayer: dealer,
     dealer,
@@ -1101,6 +1102,12 @@ function meldAkaTransition(p, consumedFromHand, handAfter) {
     akaCount: akaInHand.length + akaInMelds.length
   };
 }
+function revealPendingKanDora(state) {
+  const pending = state.pendingKanDora ?? 0;
+  if (pending <= 0) return state;
+  const wall = { ...getWall(state), doraCount: state.doraMarkers.length + pending };
+  return { ...state, doraMarkers: getDoraMarkers(wall), pendingKanDora: 0 };
+}
 function waitsOf(hand, playerCount) {
   const waits = [];
   for (let t = 0; t < 34; t = t + 1) {
@@ -1138,6 +1145,9 @@ function getValidActions(state) {
     }
     case "discard": {
       const player = state.players[state.currentPlayer];
+      const wall = getWall(state);
+      const liveRemaining = remainingTiles(wall);
+      const canTakeReplacement = liveRemaining > 0 && drawRinshan(wall) !== null;
       const uniqueTiles = player.riichi && state.lastDrawnTile != null ? [state.lastDrawnTile] : [...new Set(player.hand)];
       const forbidden = new Set(state.kuikae ?? []);
       for (const t of uniqueTiles) {
@@ -1148,7 +1158,7 @@ function getValidActions(state) {
       if (isWinningHand(player.hand) && state.lastDrawnTile !== null && previewWin(state, state.currentPlayer, true, state.lastDrawnTile)) {
         actions.push({ kind: ActionKind.Tsumo });
       }
-      if (player.isMenzen && !player.riichi && player.score >= 1e3) {
+      if (player.isMenzen && !player.riichi && player.score >= 1e3 && liveRemaining >= state.playerCount) {
         for (const t of uniqueTiles) {
           const remaining = [...player.hand];
           const idx = remaining.indexOf(t);
@@ -1159,11 +1169,11 @@ function getValidActions(state) {
         }
       }
       for (const t of uniqueTiles) {
-        if (player.hand.filter((x) => x === t).length === 4 && (!player.riichi || isLegalRiichiAnkan(state, t))) {
+        if (canTakeReplacement && player.hand.filter((x) => x === t).length === 4 && (!player.riichi || isLegalRiichiAnkan(state, t))) {
           actions.push({ kind: ActionKind.Ankan, tile: t });
         }
       }
-      if (!player.riichi) {
+      if (!player.riichi && canTakeReplacement) {
         for (const meld of player.melds) {
           if (meld.type === "pon" && player.hand.includes(meld.tiles[0])) {
             actions.push({ kind: ActionKind.Kakan, tile: meld.tiles[0] });
@@ -1180,7 +1190,7 @@ function getValidActions(state) {
           actions.push({ kind: ActionKind.Kyushukyuhai });
         }
       }
-      if (state.playerCount === 3 && state.lastDrawnTile != null && player.hand.includes(30) && (!player.riichi || state.lastDrawnTile === 30)) {
+      if (canTakeReplacement && state.playerCount === 3 && state.lastDrawnTile != null && player.hand.includes(30) && (!player.riichi || state.lastDrawnTile === 30)) {
         actions.push({ kind: ActionKind.Kita });
       }
       break;
@@ -1215,26 +1225,28 @@ function getValidActions(state) {
       if (ronPlayer !== null && !(state.sanwahou && ronCount >= 3)) {
         actions.push({ kind: ActionKind.Ron, called: discarded });
       }
-      for (let offset = 1; offset <= lastOffset; offset++) {
-        const p = (discardedBy + offset) % state.playerCount;
-        if (state.players[p].riichi) continue;
-        if (state.players[p].hand.filter((t) => t === discarded).length === 3) {
-          actions.push({ kind: ActionKind.Daiminkan, called: discarded });
-          break;
+      if (remainingTiles(getWall(state)) > 0) {
+        for (let offset = 1; offset <= lastOffset; offset++) {
+          const p = (discardedBy + offset) % state.playerCount;
+          if (state.players[p].riichi) continue;
+          if (state.players[p].hand.filter((t) => t === discarded).length === 3) {
+            actions.push({ kind: ActionKind.Daiminkan, called: discarded });
+            break;
+          }
         }
-      }
-      for (let offset = 1; offset <= lastOffset; offset++) {
-        const p = (discardedBy + offset) % state.playerCount;
-        if (state.players[p].riichi) continue;
-        if (state.players[p].hand.filter((t) => t === discarded).length >= 2) {
-          actions.push({ kind: ActionKind.Pon, called: discarded });
-          break;
+        for (let offset = 1; offset <= lastOffset; offset++) {
+          const p = (discardedBy + offset) % state.playerCount;
+          if (state.players[p].riichi) continue;
+          if (state.players[p].hand.filter((t) => t === discarded).length >= 2) {
+            actions.push({ kind: ActionKind.Pon, called: discarded });
+            break;
+          }
         }
-      }
-      if (state.playerCount === 4) {
-        const nextPlayer = (discardedBy + 1) % state.playerCount;
-        if (!state.players[nextPlayer].riichi) {
-          actions.push(...getChiActions(state.players[nextPlayer].hand, discarded, state.players[nextPlayer].akaInHand));
+        if (state.playerCount === 4) {
+          const nextPlayer = (discardedBy + 1) % state.playerCount;
+          if (!state.players[nextPlayer].riichi) {
+            actions.push(...getChiActions(state.players[nextPlayer].hand, discarded, state.players[nextPlayer].akaInHand));
+          }
         }
       }
       actions.push({ kind: ActionKind.Pass });
@@ -1479,6 +1491,7 @@ function advanceToDraw(state, player) {
   };
 }
 function applyDiscard(state, action) {
+  state = revealPendingKanDora(state);
   const tsumogiri = action.tile === state.lastDrawnTile;
   const players = state.players.map((p, i) => {
     if (i !== state.currentPlayer) return p;
@@ -1792,6 +1805,7 @@ function applyRiichi(state, action) {
   return { ...discardState, kyotaku: state.kyotaku + 1 };
 }
 function applyAnkan(state, action) {
+  state = revealPendingKanDora(state);
   const players = state.players.map((p, i) => {
     if (i !== state.currentPlayer) return p;
     const hand = [...p.hand];
@@ -1838,6 +1852,7 @@ function applyAnkan(state, action) {
   };
 }
 function applyKakan(state, action) {
+  state = revealPendingKanDora(state);
   const players = state.players.map((p, i) => {
     if (i !== state.currentPlayer) return p;
     const hand = [...p.hand];
@@ -1848,7 +1863,7 @@ function applyKakan(state, action) {
     );
     const withMeld = { ...p, hand, melds };
     return meldAkaTransition(withMeld, [action.tile], hand);
-  }).map((p) => ({ ...p, ippatsuEligible: false }));
+  });
   return {
     ...state,
     players,
@@ -1870,7 +1885,7 @@ function completeKakanDraw(state) {
     hand: [...p.hand, result.tile].sort((a, b) => a - b),
     akaInHand: result.aka ? [...p.akaInHand ?? [], result.tile] : p.akaInHand ?? [],
     akaCount: (p.akaInHand?.length ?? 0) + (result.aka ? 1 : 0) + (p.akaInMelds?.length ?? 0)
-  });
+  }).map((p) => ({ ...p, ippatsuEligible: false }));
   return {
     ...state,
     players,
@@ -1878,7 +1893,8 @@ function completeKakanDraw(state) {
     wall: result.wall.tiles,
     wallIndex: result.wall.drawIndex,
     rinshanIndex: result.wall.rinshanIndex,
-    doraMarkers: getDoraMarkers(result.wall),
+    doraMarkers: state.doraMarkers,
+    pendingKanDora: (state.pendingKanDora ?? 0) + 1,
     chankan: null,
     phase: "discard",
     lastDrawnTile: result.tile,
@@ -1938,7 +1954,8 @@ function applyDaiminkan(state, action) {
         wall: result.wall.tiles,
         wallIndex: result.wall.drawIndex,
         rinshanIndex: result.wall.rinshanIndex,
-        doraMarkers: getDoraMarkers(result.wall),
+        doraMarkers: state.doraMarkers,
+        pendingKanDora: (state.pendingKanDora ?? 0) + 1,
         phase: "discard",
         lastDiscard: null,
         lastDiscardPlayer: null,
@@ -2052,6 +2069,7 @@ function newRound(state, dealer, roundNumber, roundWind, honba) {
     rinshanIndex: wall.rinshanIndex,
     akaPositions: wall.akaPositions,
     doraMarkers: getDoraMarkers(wall),
+    pendingKanDora: 0,
     players: hands.map((h, i) => makePlayer(h, state.players[i], i)),
     currentPlayer: dealer,
     dealer,
@@ -2096,5 +2114,6 @@ export {
   isPermanentFuriten,
   isWinningHand,
   nextRound,
-  previewWin
+  previewWin,
+  remainingTiles
 };

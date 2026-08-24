@@ -116,8 +116,9 @@ test('a call cancels every active ippatsu window', () => {
   assert.deepEqual(state.players.map(player => player.ippatsuEligible), [false, false, false]);
 });
 
-test('kakan opens chankan before consuming the dead-wall draw', () => {
+test('kakan preserves ippatsu in the chankan window and delays kan dora until discard', () => {
   let state = createGame({ playerCount: 3 });
+  const ippatsuWait = [10, 11, 12, 13, 14, 18, 19, 20, 27, 27, 31, 31, 31];
   state = {
     ...state,
     phase: 'discard',
@@ -128,6 +129,8 @@ test('kakan opens chankan before consuming the dead-wall draw', () => {
       hand: [9, ...player.hand.slice(0, 13)],
       melds: [{ type: 'pon', tiles: [9, 9, 9], calledFrom: 1 }],
       isMenzen: false
+    } : index === 1 ? {
+      ...player, hand: ippatsuWait, riichi: true, ippatsuEligible: true, isMenzen: true
     } : player)
   };
   const rinshanBefore = state.rinshanIndex;
@@ -136,10 +139,34 @@ test('kakan opens chankan before consuming the dead-wall draw', () => {
   assert.equal(state.phase, 'respond');
   assert.equal(state.rinshanIndex, rinshanBefore);
   assert.equal(state.doraMarkers.length, doraBefore);
+  const robbed = evaluateWin(state, 1, false, 9);
+  assert.ok(robbed.yakuList.some(yaku => yaku.name === 'chankan'));
+  assert.ok(robbed.yakuList.some(yaku => yaku.name === 'ippatsu'));
   state = applyAction(state, { kind: ActionKind.Pass });
   assert.equal(state.phase, 'discard');
   assert.equal(state.rinshanIndex, rinshanBefore - 1);
+  assert.equal(state.doraMarkers.length, doraBefore, 'kakan dora is not visible on the rinshan draw');
+  assert.equal(state.pendingKanDora, 1);
+  state = applyAction(state, { kind: ActionKind.Discard, tile: state.lastDrawnTile });
   assert.equal(state.doraMarkers.length, doraBefore + 1);
+  assert.equal(state.pendingKanDora, 0);
+});
+
+test('ankan reveals its kan dora immediately', () => {
+  let state = createGame({ playerCount: 3 });
+  state = {
+    ...state,
+    phase: 'discard',
+    currentPlayer: 0,
+    lastDrawnTile: 9,
+    players: state.players.map((player, index) => index === 0
+      ? { ...player, hand: [9, 9, 9, 9, ...player.hand.slice(0, 10)] }
+      : player)
+  };
+  const before = state.doraMarkers.length;
+  state = applyAction(state, { kind: ActionKind.Ankan, tile: 9 });
+  assert.equal(state.doraMarkers.length, before + 1);
+  assert.equal(state.pendingKanDora, 0);
 });
 
 test('public sanma action surface enforces riichi tsumogiri and legal ankan', () => {
@@ -442,6 +469,72 @@ test('regular and red five are separate discard choices and preserve red metadat
   const red = applyAction(state, choices.find(action => action.aka));
   assert.equal(red.players[0].akaCount, 0);
   assert.equal(red.players[0].discards.at(-1).aka, true);
+});
+
+test('last live-wall draw cannot declare riichi, kita, kan, pon or daiminkan', () => {
+  const base = createGame({ playerCount: 3 });
+  const finalDrawIndex = base.wall.length - 18;
+  const tenpaiHand = [9, 10, 11, 18, 19, 20, 21, 22, 23, 27, 27, 31, 31, 30];
+  const finalTurn = {
+    ...base,
+    phase: 'discard',
+    currentPlayer: 0,
+    wallIndex: finalDrawIndex,
+    lastDrawnTile: 30,
+    players: base.players.map((player, index) => index === 0
+      ? { ...player, hand: tenpaiHand, isMenzen: true, score: 35000 }
+      : player)
+  };
+  const actions = getValidActions(finalTurn);
+  assert.equal(actions.some(action => action.kind === ActionKind.Riichi), false);
+  assert.equal(actions.some(action => action.kind === ActionKind.Kita), false);
+
+  const kanTurn = {
+    ...finalTurn,
+    lastDrawnTile: 9,
+    players: finalTurn.players.map((player, index) => index === 0
+      ? { ...player, hand: [9, 9, 9, 9, 18, 19, 20, 21, 22, 23, 27, 27, 31, 31] }
+      : player)
+  };
+  assert.equal(getValidActions(kanTurn).some(action => action.kind === ActionKind.Ankan), false);
+
+  const response = {
+    ...base,
+    phase: 'respond',
+    wallIndex: finalDrawIndex,
+    lastDiscard: 31,
+    lastDiscardPlayer: 1,
+    players: base.players.map((player, index) => index === 0
+      ? { ...player, hand: [31, 31, ...player.hand.slice(2)] }
+      : index === 2 ? { ...player, hand: [31, 31, 31, ...player.hand.slice(3)] } : player)
+  };
+  const responses = getValidActions(response);
+  assert.equal(responses.some(action => action.kind === ActionKind.Pon), false);
+  assert.equal(responses.some(action => action.kind === ActionKind.Daiminkan), false);
+});
+
+test('nearest sanma caller has priority when two players can call the same discard', () => {
+  const session = new SanmaGameSession({ speed: 0 });
+  session.state = {
+    ...session.state,
+    phase: 'respond',
+    lastDiscard: 31,
+    lastDiscardPlayer: 1,
+    players: session.state.players.map((player, index) => ({
+      ...player,
+      hand: index === 0
+        ? [31, 31, 9, 10, 12, 14, 16, 18, 20, 22, 27, 28, 29]
+        : index === 2
+          ? [31, 31, 31, 9, 11, 13, 15, 17, 19, 21, 23, 28, 30]
+          : player.hand,
+      discards: index === 1 ? [{ tile: 31, tsumogiri: false }] : []
+    }))
+  };
+  session.handleResponses();
+  assert.equal(session.human.pending, null, 'farther human may not pre-empt the nearer caller');
+  assert.equal(session.state.currentPlayer, 2);
+  assert.equal(session.state.players[2].melds.at(-1).type, 'daiminkan');
+  session.stop();
 });
 
 test('sanma human decisions can drive a complete hanchan', { timeout: 30000 }, async () => {

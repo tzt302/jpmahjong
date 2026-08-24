@@ -118,6 +118,11 @@ function updateModeUI() {
 function startGame() {
   game?.stop?.();
   document.body.dataset.players = String(selectedPlayerCount);
+  const sidebar = $('#tableSidebar');
+  sidebar.classList.add('collapsed');
+  $('#sidebarToggle').textContent = '›';
+  $('#sidebarToggle').setAttribute('aria-expanded', 'false');
+  $('#sidebarToggle').setAttribute('aria-label', '展开牌局信息');
   botBusy = false;
   riichiArmed = false;
   $('#resultModal').classList.add('hidden');
@@ -308,14 +313,53 @@ function handleDecision(decision) {
   renderGame();
 }
 
+const SANMA_YAKU_LABELS = Object.freeze({
+  riichi: '立直', daburii: '双立直', ippatsu: '一发', menzen_tsumo: '门前清自摸和',
+  rinshan: '岭上开花', chankan: '抢杠', haitei: '海底摸月', houtei: '河底捞鱼',
+  tanyao: '断幺九', yakuhai_haku: '役牌·白', yakuhai_hatsu: '役牌·发',
+  yakuhai_chun: '役牌·中', yakuhai_bakaze: '场风牌', yakuhai_jikaze: '门风牌',
+  pinhu: '平和', iipeikou: '一杯口', toitoi: '对对和', chiitoitsu: '七对子',
+  san_ankou: '三暗刻', sanshoku_doujun: '三色同顺', ikkitsuukan: '一气通贯',
+  chanta: '混全带幺九', sanshoku_doukou: '三色同刻', sankantsu: '三杠子',
+  shousangen: '小三元', honroutou: '混老头', honitsu: '混一色',
+  ryanpeikou: '二杯口', junchan: '纯全带幺九', chinitsu: '清一色',
+  tenhou: '天和', chiihou: '地和', kokushi: '国士无双', suu_ankou: '四暗刻',
+  suu_ankou_tanki: '四暗刻单骑', daisangen: '大三元', daisuushii: '大四喜',
+  shousuushii: '小四喜', chuuren: '九莲宝灯', junsei_chuuren: '纯正九莲宝灯',
+  ryuiisou: '绿一色', daichisei: '大七星', tsuuiisou: '字一色',
+  chinroutou: '清老头', suu_kantsu: '四杠子', '流し満貫': '流局满贯'
+});
+
+function sanmaSeatLabel(player) {
+  return `${WIND_LABELS[(player + 3 - game.state.dealer) % 3]}家`;
+}
+
+function sanmaPaymentText(result, winner) {
+  if (result.type === 'ron' && winner.payment) return `荣和 ${winner.payment.toLocaleString('zh-CN')}点`;
+  if (result.type !== 'tsumo' || !winner.scoreResult) return '';
+  const honba = game.state.honba * 100;
+  if (winner.winner === game.state.dealer) {
+    return `自摸 每家 ${(winner.scoreResult.tsumoDealer + honba).toLocaleString('zh-CN')}点`;
+  }
+  return `自摸 庄家 ${(winner.scoreResult.tsumoDealerPays + honba).toLocaleString('zh-CN')}点／子家 ${(winner.scoreResult.tsumoChild + honba).toLocaleString('zh-CN')}点`;
+}
+
+function sanmaWinnerLine(result, winner) {
+  const yaku = (winner.yakuList || winner.yaku || [])
+    .map(item => SANMA_YAKU_LABELS[item.name] || item.name)
+    .join(' · ');
+  const dora = winner.doraCount ? ` · 宝牌×${winner.doraCount}` : '';
+  const score = result.type === 'nagashi' ? '' : `　${winner.fu || 0}符 ${winner.totalHan || winner.han || 0}番`;
+  const payment = sanmaPaymentText(result, winner);
+  return `${sanmaSeatLabel(winner.winner)}　${yaku || '和牌'}${dora}${score}${payment ? `　${payment}` : ''}`;
+}
+
 function showSanmaResult(result) {
   const winner = result.winners[0];
-  const yaku = (winner.yakuList || winner.yaku || []).map(item => item.name).join(' · ');
-  const dora = winner.doraCount ? ` · 宝牌×${winner.doraCount}` : '';
-  const title = result.type === 'nagashi' ? '流し満貫'
-    : result.type === 'tsumo' ? `${WIND_LABELS[(winner.winner + 3 - game.state.dealer) % 3]}家 自摸`
+  const title = result.type === 'nagashi' ? '流局满贯'
+    : result.type === 'tsumo' ? `${sanmaSeatLabel(winner.winner)} 自摸`
     : `${result.winners.length > 1 ? '双响' : '荣和'}`;
-  showResult(title, `${yaku || '和牌'}${dora}　${winner.fu || 0}符 ${winner.totalHan || winner.han || 0}番`);
+  showResult(title, result.winners.map(item => sanmaWinnerLine(result, item)).join('\n'));
 }
 
 function showHuleResult(result) {
