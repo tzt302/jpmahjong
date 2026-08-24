@@ -102,17 +102,17 @@ export class InteractivePlayer extends Majiang.Player {
     }
     else this.respond();
   }
-  action_hule(data) { this.emit('hule', data); this.respond(); }
-  action_pingju(data) { this.emit('pingju', data); this.respond(); }
-  action_jieju(data) { this.emit('jieju', data); this.respond(); }
+  action_hule(data) { this.emit('hule', data); this.request('round-result', { hule: data }, data); }
+  action_pingju(data) { this.emit('pingju', data); this.request('round-result', { pingju: data }, data); }
+  action_jieju(data) { this.emit('jieju', data); this.request('match-result', { paipu: data }, data); }
 }
 
 export class FullGameSession {
-  constructor({ rule = {}, onEvent, onDecision, onComplete } = {}) {
+  constructor({ rule = {}, speed = 2, onEvent, onDecision, onComplete } = {}) {
     this.human = new InteractivePlayer({ onEvent, onDecision });
     this.players = [this.human, new AutoPlayer(), new AutoPlayer(), new AutoPlayer()];
     this.game = new Majiang.Game(this.players, paipu => { this.paipu = paipu; onComplete?.(paipu); }, createStandardRule(rule), 'JP MAHJONG');
-    this.game.speed = 0;
+    this.game.speed = speed;
   }
   start() { this.game.kaiju(); return this; }
   submit(reply) { this.human.submit(reply); }

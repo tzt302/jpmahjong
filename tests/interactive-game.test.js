@@ -11,7 +11,7 @@ async function waitForDraw(session) {
 }
 
 test('interactive session pauses for a legal human discard', async () => {
-  const session = new FullGameSession({ rule: { '場数': 0 } }).start();
+  const session = new FullGameSession({ speed: 0, rule: { '場数': 0 } }).start();
   try {
     const decision = await waitForDraw(session);
     assert.equal(decision.kind, 'draw');
@@ -28,7 +28,7 @@ test('interactive session pauses for a legal human discard', async () => {
 });
 
 test('interactive session rejects actions outside the legal option set', async () => {
-  const session = new FullGameSession({ rule: { '場数': 0 } }).start();
+  const session = new FullGameSession({ speed: 0, rule: { '場数': 0 } }).start();
   try {
     await waitForDraw(session);
     assert.throws(() => session.submit({ gang: 'm1111' }), /非法杠牌/);

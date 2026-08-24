@@ -1,6 +1,7 @@
 import { TILE_LABELS } from './engine.js';
 import { tileFaceMarkup } from './tiles.js';
-import { createGame, discard, canTsumo, declareTsumo, chooseBotDiscard, getHumanCallOptions, claimHumanCall, skipHumanCall, WINDS } from './game-core.js';
+import { FullGameSession } from './full-game.js';
+import { WIND_LABELS, meldTiles, tableSnapshot } from './full-game-view.js';
 import { QUESTIONS } from './questions.js';
 
 const $ = selector => document.querySelector(selector);
@@ -8,6 +9,7 @@ const $$ = selector => [...document.querySelectorAll(selector)];
 let game = null;
 let botBusy = false;
 let lastDiscardPlayer = null;
+let riichiArmed = false;
 let audioContext = null;
 let quizIndex = Number(localStorage.getItem('jpmahjong-quiz-index') || 0) % QUESTIONS.length;
 let quizDone = JSON.parse(localStorage.getItem('jpmahjong-quiz-done') || '[]');
@@ -113,119 +115,171 @@ function updateModeUI() {
 }
 
 function startGame() {
-  game = createGame(Math.random, selectedPlayerCount);
-  document.body.dataset.players = String(selectedPlayerCount);
+  game?.stop?.();
+  selectedPlayerCount = 4;
+  document.body.dataset.players = '4';
   botBusy = false;
+  riichiArmed = false;
   $('#resultModal').classList.add('hidden');
-  renderGame();
+  const session = new FullGameSession({
+    speed: 2,
+    onEvent: handleCoreEvent,
+    onDecision: handleDecision,
+    onComplete: paipu => { game.paipu = paipu; }
+  });
+  game = session;
+  session.start();
 }
 
 function renderGame() {
-  $('#wallText').textContent = `${game.playerCount === 3 ? '三麻' : '四麻'} · 牌山 ${game.wall.length}`;
-  $('.rule-note span').innerHTML = `玩家对战${game.playerCount === 3 ? '两位' : '三位'} AI<br>${game.playerCount === 3 ? '三麻 · 无二万至八万' : '四麻 · 标准牌组'}`;
-  $('#centerWall').textContent = game.wall.length;
-  const callOptions = getHumanCallOptions(game);
-  const callPending = Boolean(game.pendingCall);
-  const humanTurn = game.current === 0 && !callPending;
-  $('#turnSeal').textContent = WINDS[game.current];
-  $('#turnLabel').textContent = humanTurn ? 'YOUR SEAT' : 'OPPONENT TURN';
-  $('#turnName').textContent = humanTurn ? '你 · 東家' : `AI · ${WINDS[game.current]}家`;
-  $('#turnMessage').textContent = game.phase === 'draw' ? '牌山已尽' : callPending ? '可以鸣牌，或选择跳过' : humanTurn ? '选择一张牌打出' : '电脑雀士正在思考…';
-  $('#seatList').innerHTML = WINDS.slice(0, game.playerCount).map((wind, i) => `<li class="${i === game.current ? 'current' : ''}"><b>${i === 0 ? '你' : `AI ${wind}家`}</b><span>${game.rivers[i].length} 枚切牌</span></li>`).join('');
-  game.rivers.forEach((river, i) => {
-    $(`#river${i}`).innerHTML = river.map((tile, index) => `<span class="river-tile ${i === lastDiscardPlayer && index === river.length - 1 ? 'land' : ''}">${tileFaceMarkup(tile)}</span>`).join('');
+  const snapshot = tableSnapshot(game);
+  if (!snapshot) return;
+  const pending = game.human.pending;
+  const discardTurn = ['draw', 'post-call-discard'].includes(pending?.kind);
+  const responseTurn = ['discard-response', 'kan-response'].includes(pending?.kind);
+  const currentSeat = snapshot.seats.find(seat => seat.position === snapshot.currentPosition);
+  $('#roundText').textContent = snapshot.roundLabel;
+  $('.sidebar-content h2').textContent = snapshot.roundLabel;
+  $('.table-center b').textContent = snapshot.roundLabel;
+  $('.table-center span').textContent = `供托 × ${snapshot.riichiSticks}　 本场 × ${snapshot.honba}`;
+  $('#wallText').textContent = `四麻 · 牌山 ${snapshot.wallRemaining}`;
+  $('#centerWall').textContent = snapshot.wallRemaining;
+  $('.rule-note span').innerHTML = '完整四人立直麻将<br>半庄 · 赤牌 · 食断 · 途中流局';
+  $('#turnSeal').textContent = currentSeat?.windLabel || snapshot.seats[0].windLabel;
+  $('#turnLabel').textContent = discardTurn ? 'YOUR TURN' : 'MATCH IN PROGRESS';
+  $('#turnName').textContent = `你 · ${WIND_LABELS[snapshot.humanWind]}家`;
+  $('#turnMessage').textContent = responseTurn ? '可以和牌或鸣牌，也可以跳过' : discardTurn ? (riichiArmed ? '选择立直宣言牌' : '选择一张牌打出') : '电脑雀士正在行动…';
+  $('.player-score').textContent = snapshot.seats[0].score.toLocaleString('zh-CN');
+
+  const plaqueSelectors = { 1: '.plaque-right', 2: '.plaque-top', 3: '.plaque-left' };
+  const markerSelectors = { 0: '.marker-bottom', 1: '.marker-right', 2: '.marker-top', 3: '.marker-left' };
+  snapshot.seats.forEach(seat => {
+    $(markerSelectors[seat.position]).textContent = seat.windLabel;
+    const plaque = plaqueSelectors[seat.position] && $(plaqueSelectors[seat.position]);
+    if (plaque) {
+      plaque.querySelector('b').textContent = seat.windLabel;
+      plaque.querySelector('span').textContent = ['你', '竹林の道', '静寂の庭', '月下の牌'][seat.playerId];
+      plaque.querySelector('strong').textContent = seat.score.toLocaleString('zh-CN');
+    }
+    $(`#river${seat.position}`).innerHTML = seat.river.map((tile, index) => `<span class="river-tile ${tile.riichi ? 'riichi' : ''} ${tile.claimed ? 'claimed' : ''} ${seat.position === lastDiscardPlayer && index === seat.river.length - 1 ? 'land' : ''}">${tileFaceMarkup(tile.tile)}</span>`).join('');
   });
-  const hand = game.hands[0];
-  $('#meldArea').innerHTML = game.melds[0].map(meld => `<span class="meld-group" data-meld="${meld.type}">${meld.tiles.map(tile => `<i>${tileFaceMarkup(tile)}</i>`).join('')}</span>`).join('');
-  $('#hand').classList.toggle('waiting', !humanTurn);
-  $('#hand').innerHTML = hand.map((tile, index) => tileMarkup(tile, humanTurn && tile === game.drawn && index === hand.lastIndexOf(tile) ? 'drawn' : '')).join('');
-  $('#tsumoButton').classList.toggle('hidden', !humanTurn || !canTsumo(game));
-  $('#sortButton').disabled = !humanTurn;
-  $('#chiButton').disabled = !callOptions.chi.length;
-  $('#ponButton').disabled = !callOptions.pon;
-  $('#kanButton').disabled = !callOptions.kan;
-  $('#skipCallButton').classList.toggle('hidden', !callPending);
-  $('#callStatus').textContent = callPending ? '鸣牌机会' : '鸣牌';
-  $('.hand-actions').classList.toggle('call-ready', callPending);
-  if (game.phase === 'draw') showResult('荒牌流局', '牌山已经摸完。本版暂不计算听牌罚符。');
+  $('#seatList').innerHTML = snapshot.seats.map(seat => `<li class="${seat.position === snapshot.currentPosition ? 'current' : ''}"><b>${seat.human ? '你' : ['你', '竹林', '静寂', '月下'][seat.playerId]} · ${seat.windLabel}家</b><span>${seat.score.toLocaleString('zh-CN')} 点</span></li>`).join('');
+  $('#doraTile').innerHTML = snapshot.doraIndicators.map(tile => `<span>${tileFaceMarkup(tile.tile)}</span>`).join('');
+  const humanSeat = snapshot.seats[0];
+  $('#meldArea').innerHTML = humanSeat.melds.map(meld => `<span class="meld-group">${meld.tiles.map(tile => `<i>${tileFaceMarkup(tile.tile)}</i>`).join('')}</span>`).join('');
+  $('#hand').classList.toggle('waiting', !discardTurn);
+  $('#hand').innerHTML = snapshot.hand.map((item, index) => `<button class="tile ${item.drawn ? 'drawn' : ''} ${item.red ? 'red-five' : ''}" data-index="${index}" data-code="${item.code}" data-tile="${item.tile}" data-drawn="${item.drawn}" aria-label="${TILE_LABELS[item.tile]}">${tileFaceMarkup(item.tile)}</button>`).join('');
+
+  const calls = pending?.options?.fulou || [];
+  $('#chiButton').disabled = !calls.some(meld => meldType(meld) === 'chi');
+  $('#ponButton').disabled = !calls.some(meld => meldType(meld) === 'pon');
+  const kans = [...calls.filter(meld => meldType(meld) === 'kan'), ...(pending?.options?.gang || [])];
+  $('#kanButton').disabled = !kans.length;
+  $('#riichiButton').disabled = !(pending?.options?.riichi?.length);
+  $('#riichiButton').classList.toggle('active', riichiArmed);
+  $('#ronButton').disabled = !(responseTurn && pending?.options?.hule);
+  $('#tsumoButton').classList.toggle('hidden', !(pending?.kind === 'draw' && pending.options.hule));
+  $('#sortButton').disabled = true;
+  $('#sortButton').textContent = '已自动理牌';
+  $('#skipCallButton').classList.toggle('hidden', !responseTurn);
+  $('#callStatus').textContent = responseTurn ? '鸣牌机会' : '鸣牌';
+  $('.hand-actions').classList.toggle('call-ready', responseTurn);
   bindHand();
   lastDiscardPlayer = null;
 }
 
 function bindHand() {
-  $$('#hand .tile').forEach((tile, index) => tile.addEventListener('click', async () => {
-    if (botBusy || game.current !== 0 || game.phase !== 'playing') return;
+  $$('#hand .tile').forEach(tile => tile.addEventListener('click', async () => {
+    const pending = game.human.pending;
+    if (botBusy || !['draw', 'post-call-discard'].includes(pending?.kind)) return;
+    const code = tile.dataset.code;
+    const drawn = tile.dataset.drawn === 'true';
+    const legal = pending.options.dapai || [];
+    let discardCode = legal.find(option => option.slice(0, 2) === code && option.includes('_') === drawn)
+      || legal.find(option => option.slice(0, 2) === code);
+    if (!discardCode) return;
+    if (riichiArmed) {
+      if (!pending.options.riichi.includes(discardCode)) return;
+      discardCode += '*';
+    }
     botBusy = true;
     tile.classList.add('discarding');
-    const selectedTile = game.hands[0][index];
-    await flyTile(tileFaceMarkup(selectedTile), tile.getBoundingClientRect(), 0);
-    discard(game, index);
+    await flyTile(tileFaceMarkup(Number(tile.dataset.tile)), tile.getBoundingClientRect(), 0).catch(() => {});
+    game.submit({ dapai: discardCode });
     lastDiscardPlayer = 0;
+    riichiArmed = false;
     playTileSound();
+    botBusy = false;
     renderGame();
-    window.setTimeout(runBotTurn, 360);
   }));
 }
 
-async function runBotTurn() {
-  if (game.phase !== 'playing' || game.current === 0) {
-    botBusy = false;
-    renderGame();
-    return;
-  }
-  const player = game.current;
-  await animateWallDraw(player);
-  if (canTsumo(game)) {
-    const winner = declareTsumo(game);
-    botBusy = false;
-    renderGame();
-    showResult(`${WINDS[winner]}家 AI 自摸`, '电脑雀士完成了和牌形。本版不会向玩家提供任何出牌建议。');
-    return;
-  }
-  const discardIndex = chooseBotDiscard(game);
-  const discardedTile = game.hands[player][discardIndex];
-  await animateAiDiscard(player, discardedTile);
-  discard(game, discardIndex, { deferAdvance: true });
-  lastDiscardPlayer = player;
-  playTileSound();
-  const options = getHumanCallOptions(game);
-  if (options.chi.length || options.pon || options.kan) {
-    botBusy = false;
-    renderGame();
-    return;
-  }
-  skipHumanCall(game);
-  if (game.current === 0) botBusy = false;
-  renderGame();
-  if (game.phase === 'playing' && game.current !== 0) window.setTimeout(runBotTurn, 280);
+function meldType(meld) {
+  const digits = meld.replace(/[^0-9]/g, '').replace(/0/g, '5');
+  if (digits.length === 4) return 'kan';
+  if (new Set(digits).size === 1) return 'pon';
+  return 'chi';
 }
 
-$('#sortButton').addEventListener('click', () => {
-  if (game.current !== 0 || botBusy) return;
-  game.hands[game.current].sort((a, b) => a - b);
-  renderGame();
-});
-
 function useCall(type) {
-  claimHumanCall(game, type);
-  botBusy = false;
-  renderGame();
+  const pending = game.human.pending;
+  if (!pending) return;
+  const source = type === 'kan' && pending.options.gang?.length
+    ? pending.options.gang.map(code => ({ code, reply: { gang: code } }))
+    : (pending.options.fulou || []).filter(code => meldType(code) === type).map(code => ({ code, reply: { fulou: code } }));
+  showChoices(source);
+}
+
+function showChoices(choices) {
+  if (!choices.length) return;
+  if (choices.length === 1) return game.submit(choices[0].reply);
+  const panel = $('#choicePanel');
+  panel.innerHTML = choices.map((choice, index) => `<button data-choice="${index}">${meldTiles(choice.code).map(tile => tileFaceMarkup(tile.tile)).join('')}</button>`).join('');
+  panel.classList.remove('hidden');
+  $$('[data-choice]').forEach(button => button.addEventListener('click', () => {
+    panel.classList.add('hidden');
+    game.submit(choices[Number(button.dataset.choice)].reply);
+  }));
 }
 
 $('#chiButton').addEventListener('click', () => useCall('chi'));
 $('#ponButton').addEventListener('click', () => useCall('pon'));
 $('#kanButton').addEventListener('click', () => useCall('kan'));
 $('#skipCallButton').addEventListener('click', () => {
-  skipHumanCall(game);
-  botBusy = game.current !== 0;
-  renderGame();
-  if (botBusy) window.setTimeout(runBotTurn, 180);
+  game.submit({});
 });
+$('#riichiButton').addEventListener('click', () => { riichiArmed = !riichiArmed; renderGame(); });
+$('#ronButton').addEventListener('click', () => game.submit({ hule: '-' }));
+$('#tsumoButton').addEventListener('click', () => game.submit({ hule: '-' }));
 
-$('#tsumoButton').addEventListener('click', () => {
-  const winner = declareTsumo(game);
-  showResult(`${WINDS[winner]}家 自摸`, '手牌已经组成四组面子与一组雀头。本版先完成和牌形判定，役种与点数将在后续版本接入。');
-});
+function handleCoreEvent(event) {
+  if (event.type === 'dapai') {
+    const snapshot = tableSnapshot(game);
+    lastDiscardPlayer = snapshot?.seats.find(seat => seat.wind === event.payload.l)?.position ?? null;
+    playTileSound();
+  }
+  renderGame();
+}
+
+function handleDecision(decision) {
+  botBusy = false;
+  riichiArmed = false;
+  if (decision.kind === 'round-result') {
+    if (decision.options.hule) showHuleResult(decision.options.hule);
+    else showResult(decision.options.pingju.name || '荒牌流局', '听牌罚符、本场与供托已由完整规则核心结算。');
+  }
+  else if (decision.kind === 'match-result') {
+    const scores = decision.payload.defen || [];
+    showResult('半庄结束', scores.map((score, index) => `${index + 1}位 ${score.toLocaleString('zh-CN')}点`).join('　'));
+  }
+  renderGame();
+}
+
+function showHuleResult(result) {
+  const yakus = (result.hupai || []).map(yaku => yaku.name).join(' · ');
+  const limit = result.damanguan ? `${result.damanguan}倍役满` : `${result.fu || 0}符 ${result.fanshu || 0}番`;
+  showResult(`${WIND_LABELS[result.l]}家 ${result.baojia == null ? '自摸' : '荣和'}`, `${yakus || '和牌'}　${limit}　${Number(result.defen || 0).toLocaleString('zh-CN')}点`);
+}
 
 function showResult(title, copy) {
   $('#resultTitle').textContent = title;
@@ -233,7 +287,12 @@ function showResult(title, copy) {
   $('#resultModal').classList.remove('hidden');
 }
 
-$('#newRoundButton').addEventListener('click', startGame);
+$('#newRoundButton').addEventListener('click', () => {
+  $('#resultModal').classList.add('hidden');
+  if (game?.human?.pending?.kind === 'match-result') game.submit({});
+  else if (game?.human?.pending?.kind === 'round-result') game.submit({});
+  else startGame();
+});
 $('#restartButton').addEventListener('click', startGame);
 $$('[data-player-count]').forEach(button => button.addEventListener('click', () => {
   selectedPlayerCount = Number(button.dataset.playerCount);
