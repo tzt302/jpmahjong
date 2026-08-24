@@ -13,6 +13,8 @@ let botBusy = false;
 let lastDiscardPlayer = null;
 let riichiArmed = false;
 let audioContext = null;
+let actionFlashTimer = null;
+let lastHumanMeldCount = 0;
 let quizIndex = Number(localStorage.getItem('jpmahjong-quiz-index') || 0) % QUESTIONS.length;
 let quizDone = JSON.parse(localStorage.getItem('jpmahjong-quiz-done') || '[]');
 let selectedPlayerCount = Number(localStorage.getItem('jpmahjong-player-count')) === 3 ? 3 : 4;
@@ -73,10 +75,12 @@ async function flyTile(faceMarkup, startRect, player) {
   const scale = Math.max(.42, targetRect.width / Math.max(1, startRect.width));
   const rotation = player === 1 ? -90 : player === 2 ? 180 : player === 3 ? 90 : -2;
   const animation = flyer.animate([
-    { transform: 'translate3d(0,0,0) rotate(0deg) scale(1)', filter: 'brightness(1)', offset: 0 },
-    { transform: `translate3d(${dx * .68}px,${dy * .68 - 22}px,0) rotate(${rotation * .6}deg) scale(${Math.max(scale, .72)})`, filter: 'brightness(1.06)', offset: .68 },
-    { transform: `translate3d(${dx}px,${dy}px,0) rotate(${rotation}deg) scale(${scale})`, filter: 'brightness(.98)', offset: 1 }
-  ], { duration: 310, easing: 'cubic-bezier(.2,.72,.25,1)', fill: 'forwards' });
+    { transform: 'translate3d(0,0,0) rotateX(0) rotateZ(0) scale(1)', filter: 'brightness(1)', offset: 0 },
+    { transform: `translate3d(${dx * .22}px,${dy * .18 - 34}px,80px) rotateX(12deg) rotateZ(${rotation * .15}deg) scale(.98)`, filter: 'brightness(1.16) drop-shadow(0 18px 12px rgba(0,0,0,.28))', offset: .28 },
+    { transform: `translate3d(${dx * .82}px,${dy * .82 - 16}px,28px) rotateX(5deg) rotateZ(${rotation * .82}deg) scale(${Math.max(scale, .7)})`, filter: 'brightness(1.08) drop-shadow(0 10px 8px rgba(0,0,0,.25))', offset: .78 },
+    { transform: `translate3d(${dx}px,${dy + 3}px,0) rotateX(0) rotateZ(${rotation}deg) scale(${scale * .97})`, filter: 'brightness(.94)', offset: .92 },
+    { transform: `translate3d(${dx}px,${dy}px,0) rotateX(0) rotateZ(${rotation}deg) scale(${scale})`, filter: 'brightness(1)', offset: 1 }
+  ], { duration: 430, easing: 'cubic-bezier(.18,.74,.18,1)', fill: 'forwards' });
   await animation.finished.catch(() => {});
   flyer.remove();
 }
@@ -116,6 +120,38 @@ function updateModeUI() {
   $$('[data-player-count]').forEach(button => button.classList.toggle('active', Number(button.dataset.playerCount) === selectedPlayerCount));
 }
 
+function showActionFlash(label, english = '') {
+  const flash = $('#actionFlash');
+  if (!flash.classList.contains('hidden') && flash.querySelector('strong').textContent === label) return;
+  clearTimeout(actionFlashTimer);
+  flash.querySelector('strong').textContent = label;
+  flash.querySelector('small').textContent = english;
+  flash.dataset.tone = ['和', '荣和', '自摸'].includes(label) ? 'win' : label === '立直' ? 'riichi' : 'call';
+  flash.classList.remove('hidden', 'playing');
+  void flash.offsetWidth;
+  flash.classList.add('playing');
+  $('.table-scene')?.classList.remove('action-impact');
+  void $('.table-scene')?.offsetWidth;
+  $('.table-scene')?.classList.add('action-impact');
+  actionFlashTimer = window.setTimeout(() => {
+    flash.classList.add('hidden');
+    flash.classList.remove('playing');
+    $('.table-scene')?.classList.remove('action-impact');
+  }, 760);
+}
+
+async function commitAction(label, english, reply) {
+  if (botBusy) return;
+  botBusy = true;
+  showActionFlash(label, english);
+  await delay(330);
+  try {
+    if (game?.human?.pending) game.submit(reply);
+  } finally {
+    botBusy = false;
+  }
+}
+
 function startGame() {
   game?.stop?.();
   document.body.dataset.players = String(selectedPlayerCount);
@@ -126,7 +162,10 @@ function startGame() {
   $('#sidebarToggle').setAttribute('aria-label', '展开牌局信息');
   botBusy = false;
   riichiArmed = false;
+  lastHumanMeldCount = 0;
   $('#resultModal').classList.add('hidden');
+  $('#actionBackdrop').classList.add('hidden');
+  $('#actionFlash').classList.add('hidden');
   const Session = selectedPlayerCount === 3 ? SanmaGameSession : FullGameSession;
   const session = new Session({
     speed: selectedPlayerCount === 3 ? 380 : 2,
@@ -175,9 +214,17 @@ function renderGame() {
   $('#seatList').innerHTML = snapshot.seats.map(seat => `<li class="${seat.position === snapshot.currentPosition ? 'current' : ''}"><b>${seat.human ? '你' : ['你', '竹林', '静寂', '月下'][seat.playerId]} · ${seat.windLabel}家${seat.kitaCount ? ` · 北×${seat.kitaCount}` : ''}</b><span>${seat.score.toLocaleString('zh-CN')} 点</span></li>`).join('');
   $('#doraTile').innerHTML = snapshot.doraIndicators.map(tile => `<span>${tileFaceMarkup(tile.tile)}</span>`).join('');
   const humanSeat = snapshot.seats[0];
-  $('#meldArea').innerHTML = humanSeat.melds.map(meld => `<span class="meld-group">${meld.tiles.map(tile => `<i>${tileFaceMarkup(tile.tile, tile.red)}</i>`).join('')}</span>`).join('');
+  const hasNewMeld = humanSeat.melds.length > lastHumanMeldCount;
+  $('#meldArea').innerHTML = humanSeat.melds.map((meld, index) => `<span class="meld-group ${hasNewMeld && index === humanSeat.melds.length - 1 ? 'new-meld' : ''}">${meld.tiles.map(tile => `<i>${tileFaceMarkup(tile.tile, tile.red)}</i>`).join('')}</span>`).join('');
+  lastHumanMeldCount = humanSeat.melds.length;
   $('#hand').classList.toggle('waiting', !discardTurn);
-  $('#hand').innerHTML = snapshot.hand.map((item, index) => `<button class="tile ${item.drawn ? 'drawn' : ''} ${item.red ? 'red-five' : ''}" data-index="${index}" data-code="${item.code}" data-tile="${item.tile}" data-red="${item.red}" data-drawn="${item.drawn}" aria-label="${TILE_LABELS[item.tile]}">${tileFaceMarkup(item.tile, item.red)}</button>`).join('');
+  const riichiOptions = pending?.options?.riichi || [];
+  $('#hand').innerHTML = snapshot.hand.map((item, index) => {
+    const riichiLegal = riichiOptions.some(option => game.mode === 'sanma'
+      ? option === item.code
+      : option.slice(0, 2) === item.code && (!option.includes('_') || item.drawn));
+    return `<button class="tile ${item.drawn ? 'drawn' : ''} ${item.red ? 'red-five' : ''} ${riichiLegal ? 'riichi-legal' : ''}" data-index="${index}" data-code="${item.code}" data-tile="${item.tile}" data-red="${item.red}" data-drawn="${item.drawn}" aria-label="${TILE_LABELS[item.tile]}">${tileFaceMarkup(item.tile, item.red)}</button>`;
+  }).join('');
 
   const calls = pending?.options?.fulou || [];
   $('#chiButton').disabled = !calls.some(meld => meldType(meld) === 'chi');
@@ -196,7 +243,15 @@ function renderGame() {
   $('#skipCallButton').classList.toggle('hidden', !responseTurn);
   $('#skipCallButton').textContent = pending?.kind === 'kita-choice' ? '保留北' : '跳过';
   $('#callStatus').textContent = pending?.kind === 'kita-choice' ? '拔北选择' : responseTurn ? '鸣牌机会' : '鸣牌';
+  const decisionReady = responseTurn || Boolean(
+    pending?.options?.riichi?.length || kans.length || pending?.options?.kita ||
+    pending?.options?.hule || pending?.options?.daopai
+  );
   $('.hand-actions').classList.toggle('call-ready', responseTurn);
+  $('.hand-actions').classList.toggle('decision-ready', decisionReady);
+  $('#actionBackdrop').classList.toggle('hidden', !decisionReady);
+  $('#actionBackdrop').classList.toggle('riichi-armed', riichiArmed);
+  $('#hand').classList.toggle('riichi-select', riichiArmed);
   bindHand();
   lastDiscardPlayer = null;
 }
@@ -244,18 +299,19 @@ function useCall(type) {
   const source = type === 'kan' && pending.options.gang?.length
     ? pending.options.gang.map(code => ({ code, reply: { gang: code } }))
     : (pending.options.fulou || []).filter(code => meldType(code) === type).map(code => ({ code, reply: { fulou: code } }));
-  showChoices(source);
+  showChoices(source, type);
 }
 
-function showChoices(choices) {
+function showChoices(choices, type) {
   if (!choices.length) return;
-  if (choices.length === 1) return game.submit(choices[0].reply);
+  const labels = { chi: ['吃', 'CHI'], pon: ['碰', 'PON'], kan: ['杠', 'KAN'] };
+  if (choices.length === 1) return commitAction(...labels[type], choices[0].reply);
   const panel = $('#choicePanel');
   panel.innerHTML = choices.map((choice, index) => `<button data-choice="${index}">${choiceMarkup(choice.code)}</button>`).join('');
   panel.classList.remove('hidden');
-  $$('[data-choice]').forEach(button => button.addEventListener('click', () => {
+  $$('[data-choice]').forEach(button => button.addEventListener('click', async () => {
     panel.classList.add('hidden');
-    game.submit(choices[Number(button.dataset.choice)].reply);
+    await commitAction(...labels[type], choices[Number(button.dataset.choice)].reply);
   }));
 }
 
@@ -272,13 +328,17 @@ function choiceMarkup(code) {
 $('#chiButton').addEventListener('click', () => useCall('chi'));
 $('#ponButton').addEventListener('click', () => useCall('pon'));
 $('#kanButton').addEventListener('click', () => useCall('kan'));
-$('#kitaButton').addEventListener('click', () => game.submit({ kita: true }));
+$('#kitaButton').addEventListener('click', () => commitAction('拔北', 'KITA', { kita: true }));
 $('#skipCallButton').addEventListener('click', () => {
   game.submit({});
 });
-$('#riichiButton').addEventListener('click', () => { riichiArmed = !riichiArmed; renderGame(); });
-$('#ronButton').addEventListener('click', () => game.submit({ hule: '-' }));
-$('#tsumoButton').addEventListener('click', () => game.submit({ hule: '-' }));
+$('#riichiButton').addEventListener('click', () => {
+  riichiArmed = !riichiArmed;
+  if (riichiArmed) showActionFlash('立直', 'RIICHI');
+  renderGame();
+});
+$('#ronButton').addEventListener('click', () => commitAction('荣和', 'RON', { hule: '-' }));
+$('#tsumoButton').addEventListener('click', () => commitAction('自摸', 'TSUMO', { hule: '-' }));
 $('#abortButton').addEventListener('click', () => game.submit({ daopai: '-' }));
 
 async function handleCoreEvent(event) {
@@ -295,7 +355,14 @@ async function handleCoreEvent(event) {
       await animateAiDiscard(actorPosition, tile, Boolean(event.payload.action?.aka));
     }
     playTileSound();
+    if (String(event.payload?.p || '').includes('*') || event.payload?.action?.riichi) showActionFlash('立直', 'RIICHI');
   }
+  if (event.type === 'fulou') {
+    const type = meldType(event.payload?.m || event.payload?.action?.meld || '');
+    showActionFlash(type === 'chi' ? '吃' : type === 'kan' ? '杠' : '碰', type === 'chi' ? 'CHI' : type === 'kan' ? 'KAN' : 'PON');
+  }
+  if (event.type === 'gang') showActionFlash('杠', 'KAN');
+  if (event.type === 'kita') showActionFlash('拔北', 'KITA');
   renderGame();
 }
 
