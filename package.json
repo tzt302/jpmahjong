@@ -1,6 +1,6 @@
 {
   "name": "jpmahjong",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "type": "module",
   "description": "和纸风玩家对战 AI 日本麻将网页版",

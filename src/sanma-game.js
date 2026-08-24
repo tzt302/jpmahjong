@@ -1,6 +1,6 @@
 import {
   ActionKind, applyAction, calculatePoints, calculateShanten, createGame, evaluateWin,
-  finalRanking, isPermanentFuriten, isWinningHand, nextRound, previewWin
+  finalRanking, isPermanentFuriten, isWinningHand, nextRound, previewWin, remainingTiles
 } from '../vendor/sanma-core/browser.js';
 
 const HUMAN = 0;
@@ -64,26 +64,37 @@ function validTurnActions(state) {
   // surface in the bundle; derive the small discard-phase set locally so the
   // session can attach stable UI codes without leaking upstream objects.
   const player = state.players[state.currentPlayer];
+  const wall = {
+    tiles: state.wall,
+    drawIndex: state.wallIndex,
+    rinshanIndex: state.rinshanIndex,
+    doraCount: state.doraMarkers.length,
+    akaPositions: state.akaPositions || new Set(),
+    playerCount: state.playerCount
+  };
+  const liveRemaining = remainingTiles(wall);
+  const usedReplacements = state.wall.length - 1 - state.rinshanIndex;
+  const canTakeReplacement = liveRemaining > 0 && usedReplacements < 8;
   const forbidden = new Set(state.kuikae || []);
   const discardTiles = player.riichi ? [state.lastDrawnTile] : [...new Set(player.hand)];
   const actions = discardTiles
     .filter(tile => tile != null && !forbidden.has(tile))
     .flatMap(tile => discardVariants(player, ActionKind.Discard, tile));
   if (state.lastDrawnTile != null && isWinningHand(player.hand) && previewWin(state, state.currentPlayer, true, state.lastDrawnTile)) actions.push({ kind: ActionKind.Tsumo });
-  if (player.isMenzen && !player.riichi && player.score >= 1000) {
+  if (player.isMenzen && !player.riichi && player.score >= 1000 && liveRemaining >= state.playerCount) {
     for (const tile of new Set(player.hand)) {
       if (discardShanten(state, state.currentPlayer, tile) === 0) {
         actions.push(...discardVariants(player, ActionKind.Riichi, tile));
       }
     }
   }
-  if (!player.riichi) {
+  if (!player.riichi && canTakeReplacement) {
     for (const tile of new Set(player.hand)) if (player.hand.filter(value => value === tile).length === 4) actions.push({ kind: ActionKind.Ankan, tile });
     for (const meld of player.melds) if (meld.type === 'pon' && player.hand.includes(meld.tiles[0])) actions.push({ kind: ActionKind.Kakan, tile: meld.tiles[0] });
-  } else {
+  } else if (canTakeReplacement) {
     for (const tile of new Set(player.hand)) if (legalRiichiAnkan(state, player, tile)) actions.push({ kind: ActionKind.Ankan, tile });
   }
-  if (state.lastDrawnTile != null && player.hand.includes(30)
+  if (canTakeReplacement && state.lastDrawnTile != null && player.hand.includes(30)
       && (!player.riichi || state.lastDrawnTile === 30)) actions.push({ kind: ActionKind.Kita });
   const terminals = new Set(player.hand.filter(tile => [0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33].includes(tile)));
   if (player.discards.length === 0 && state.players.every(item => item.melds.length === 0) && terminals.size >= 9) actions.push({ kind: ActionKind.Kyushukyuhai });
@@ -118,6 +129,15 @@ function ronWinners(state, temporaryFuriten) {
 
 function callCandidates(state, actor) {
   if (state.phase !== 'respond' || state.chankan || actor === state.lastDiscardPlayer) return [];
+  const wall = {
+    tiles: state.wall,
+    drawIndex: state.wallIndex,
+    rinshanIndex: state.rinshanIndex,
+    doraCount: state.doraMarkers.length,
+    akaPositions: state.akaPositions || new Set(),
+    playerCount: state.playerCount
+  };
+  if (remainingTiles(wall) <= 0) return [];
   const tile = state.lastDiscard;
   const player = state.players[actor];
   if (player.riichi || tile == null) return [];
@@ -126,6 +146,10 @@ function callCandidates(state, actor) {
   if (count === 3) calls.push({ kind: ActionKind.Daiminkan, called: tile, actor });
   if (count >= 2) calls.push({ kind: ActionKind.Pon, called: tile, actor });
   return calls;
+}
+
+function callDistance(state, actor) {
+  return (actor + state.playerCount - state.lastDiscardPlayer) % state.playerCount;
 }
 
 function bestAiCall(state) {
@@ -370,13 +394,16 @@ export class SanmaGameSession {
     const humanCalls = callCandidates(this.state, HUMAN);
     const humanCanRon = winners.includes(HUMAN);
     const aiWinners = winners.filter(player => player !== HUMAN);
+    const preferredAiCall = aiWinners.length ? null : bestAiCall(this.state);
+    const humanHasCallPriority = humanCalls.length
+      && (!preferredAiCall || callDistance(this.state, HUMAN) < callDistance(this.state, preferredAiCall.actor));
     // Ron has absolute priority over pon/daiminkan. Never let a human call
     // steal a discard that an AI opponent has already won on.
     if (!humanCanRon && aiWinners.length) return this.finishRon(aiWinners);
-    if (humanCanRon || humanCalls.length) {
+    if (humanCanRon || humanHasCallPriority) {
       this.request('discard-response', {
         hule: humanCanRon,
-        fulou: aiWinners.length ? [] : humanCalls.map(actionCode)
+        fulou: humanHasCallPriority ? humanCalls.map(actionCode) : []
       }, reply => {
         if (reply.hule && humanCanRon) return this.finishRon(winners);
         if (humanCanRon) this.temporaryFuriten[HUMAN] = true;
@@ -388,7 +415,7 @@ export class SanmaGameSession {
           this.emit('fulou', { l: HUMAN, m: reply.fulou });
           return;
         }
-        const aiCall = bestAiCall(this.state);
+        const aiCall = preferredAiCall || bestAiCall(this.state);
         const completedKakan = Boolean(this.state.chankan) && !aiCall;
         this.state = applyAction(this.state, aiCall || { kind: ActionKind.Pass });
         this.emit(completedKakan ? 'zimo' : aiCall ? 'fulou' : 'pass', completedKakan
@@ -398,7 +425,7 @@ export class SanmaGameSession {
       return;
     }
     if (winners.length) return this.finishRon(winners);
-    const aiCall = bestAiCall(this.state);
+    const aiCall = preferredAiCall || bestAiCall(this.state);
     const completedKakan = Boolean(this.state.chankan) && !aiCall;
     this.state = applyAction(this.state, aiCall || { kind: ActionKind.Pass });
     this.emit(completedKakan ? 'zimo' : aiCall ? 'fulou' : 'pass', completedKakan

@@ -1,6 +1,6 @@
 import type { GameState, Player, PlayerState, Action, TileType, Wind } from './types'
 import { ActionKind } from './types'
-import { createWall, dealHaipai, drawTile, drawRinshan, getDoraMarkers, type Wall } from './wall'
+import { createWall, dealHaipai, drawTile, drawRinshan, getDoraMarkers, remainingTiles, type Wall } from './wall'
 import { calculateShanten } from './shanten'
 import { isWinningHand } from './hand-analysis'
 import { evaluateWin, previewWin } from './win-evaluation'
@@ -87,6 +87,7 @@ export function createGame(opts: CreateGameOptions = {}): GameState {
     rinshanIndex: wall.rinshanIndex,
     akaPositions: wall.akaPositions,
     doraMarkers,
+    pendingKanDora: 0,
     players: hands.map(makePlayer),
     currentPlayer: dealer,
     dealer,
@@ -193,6 +194,13 @@ function meldAkaTransition(
   }
 }
 
+function revealPendingKanDora(state: GameState): GameState {
+  const pending = state.pendingKanDora ?? 0
+  if (pending <= 0) return state
+  const wall = { ...getWall(state), doraCount: state.doraMarkers.length + pending }
+  return { ...state, doraMarkers: getDoraMarkers(wall), pendingKanDora: 0 }
+}
+
 function waitsOf(hand: TileType[], playerCount: 3 | 4): TileType[] {
   const waits: TileType[] = []
   for (let t = 0 as TileType; t < 34; t = (t + 1) as TileType) {
@@ -239,6 +247,9 @@ export function getValidActions(state: GameState): Action[] {
 
     case 'discard': {
       const player = state.players[state.currentPlayer]
+      const wall = getWall(state)
+      const liveRemaining = remainingTiles(wall)
+      const canTakeReplacement = liveRemaining > 0 && drawRinshan(wall) !== null
       const uniqueTiles = player.riichi && state.lastDrawnTile != null
         ? [state.lastDrawnTile]
         : [...new Set(player.hand)]
@@ -262,7 +273,8 @@ export function getValidActions(state: GameState): Action[] {
       // down the riichi stick (Mahjong Soul rule). Generates one candidate
       // PER qualifying discard tile so the AI can pick which tile to riichi
       // on, not just the first one found.
-      if (player.isMenzen && !player.riichi && player.score >= 1000) {
+      if (player.isMenzen && !player.riichi && player.score >= 1000
+          && liveRemaining >= state.playerCount) {
         for (const t of uniqueTiles) {
           const remaining = [...player.hand]
           const idx = remaining.indexOf(t)
@@ -275,14 +287,14 @@ export function getValidActions(state: GameState): Action[] {
 
       // Ankan
       for (const t of uniqueTiles) {
-        if (player.hand.filter(x => x === t).length === 4
+        if (canTakeReplacement && player.hand.filter(x => x === t).length === 4
             && (!player.riichi || isLegalRiichiAnkan(state, t))) {
           actions.push({ kind: ActionKind.Ankan, tile: t })
         }
       }
 
       // Kakan
-      if (!player.riichi) {
+      if (!player.riichi && canTakeReplacement) {
         for (const meld of player.melds) {
           if (meld.type === 'pon' && player.hand.includes(meld.tiles[0])) {
             actions.push({ kind: ActionKind.Kakan, tile: meld.tiles[0] })
@@ -315,7 +327,7 @@ export function getValidActions(state: GameState): Action[] {
       // Sanma 抜き北: if the player holds any North in hand during their
       // discard phase, they can declare kita as a free dora boost. Allowed
       // even after riichi (kita doesn't change the hand structure).
-      if (state.playerCount === 3 && state.lastDrawnTile != null && player.hand.includes(30)
+      if (canTakeReplacement && state.playerCount === 3 && state.lastDrawnTile != null && player.hand.includes(30)
           && (!player.riichi || state.lastDrawnTile === 30)) {
         actions.push({ kind: ActionKind.Kita })
       }
@@ -363,32 +375,36 @@ export function getValidActions(state: GameState): Action[] {
         actions.push({ kind: ActionKind.Ron, called: discarded })
       }
 
-      // Daiminkan — riichi locks the hand, no calls allowed.
-      for (let offset = 1; offset <= lastOffset; offset++) {
-        const p = ((discardedBy as number) + offset) % state.playerCount as Player
-        if (state.players[p].riichi) continue
-        if (state.players[p].hand.filter(t => t === discarded).length === 3) {
-          actions.push({ kind: ActionKind.Daiminkan, called: discarded })
-          break
+      // The last discard (houtei) cannot be called. Ron remains legal,
+      // but pon/chi/daiminkan require another live-wall draw to exist.
+      if (remainingTiles(getWall(state)) > 0) {
+        // Daiminkan — riichi locks the hand, no calls allowed.
+        for (let offset = 1; offset <= lastOffset; offset++) {
+          const p = ((discardedBy as number) + offset) % state.playerCount as Player
+          if (state.players[p].riichi) continue
+          if (state.players[p].hand.filter(t => t === discarded).length === 3) {
+            actions.push({ kind: ActionKind.Daiminkan, called: discarded })
+            break
+          }
         }
-      }
 
-      // Pon — same riichi restriction.
-      for (let offset = 1; offset <= lastOffset; offset++) {
-        const p = ((discardedBy as number) + offset) % state.playerCount as Player
-        if (state.players[p].riichi) continue
-        if (state.players[p].hand.filter(t => t === discarded).length >= 2) {
-          actions.push({ kind: ActionKind.Pon, called: discarded })
-          break
+        // Pon — same riichi restriction.
+        for (let offset = 1; offset <= lastOffset; offset++) {
+          const p = ((discardedBy as number) + offset) % state.playerCount as Player
+          if (state.players[p].riichi) continue
+          if (state.players[p].hand.filter(t => t === discarded).length >= 2) {
+            actions.push({ kind: ActionKind.Pon, called: discarded })
+            break
+          }
         }
-      }
 
-      // Chi (next player only) — disabled in sanma per Mahjong Soul rules.
-      // Also disabled when the next player is in riichi.
-      if (state.playerCount === 4) {
-        const nextPlayer = ((discardedBy as number) + 1) % state.playerCount as Player
-        if (!state.players[nextPlayer].riichi) {
-          actions.push(...getChiActions(state.players[nextPlayer].hand, discarded, state.players[nextPlayer].akaInHand))
+        // Chi (next player only) — disabled in sanma per Mahjong Soul rules.
+        // Also disabled when the next player is in riichi.
+        if (state.playerCount === 4) {
+          const nextPlayer = ((discardedBy as number) + 1) % state.playerCount as Player
+          if (!state.players[nextPlayer].riichi) {
+            actions.push(...getChiActions(state.players[nextPlayer].hand, discarded, state.players[nextPlayer].akaInHand))
+          }
         }
       }
 
@@ -733,6 +749,9 @@ function advanceToDraw(state: GameState, player: Player): GameState {
 }
 
 function applyDiscard(state: GameState, action: { tile: TileType; aka?: boolean }): GameState {
+  // Daiminkan/kakan use delayed kan-dora: reveal immediately before the
+  // rinshan player's discard is placed in the river.
+  state = revealPendingKanDora(state)
   const tsumogiri = action.tile === state.lastDrawnTile
   const players = state.players.map((p, i) => {
     if (i !== state.currentPlayer) return p
@@ -1142,6 +1161,9 @@ function applyRiichi(state: GameState, action: { tile: TileType; aka?: boolean }
 }
 
 function applyAnkan(state: GameState, action: { tile: TileType }): GameState {
+  // A previous delayed indicator is exposed before a chained kan. The new
+  // ankan indicator itself is immediate.
+  state = revealPendingKanDora(state)
   const players = state.players.map((p, i) => {
     if (i !== state.currentPlayer) return p
     const hand = [...p.hand]
@@ -1194,6 +1216,9 @@ function applyAnkan(state: GameState, action: { tile: TileType }): GameState {
 }
 
 function applyKakan(state: GameState, action: { tile: TileType }): GameState {
+  // A previous delayed indicator is exposed before a chained kan. This
+  // kakan's own indicator remains delayed until after its rinshan discard.
+  state = revealPendingKanDora(state)
   const players = state.players.map((p, i) => {
     if (i !== state.currentPlayer) return p
     const hand = [...p.hand]
@@ -1208,7 +1233,7 @@ function applyKakan(state: GameState, action: { tile: TileType }): GameState {
     // meld. If it was the aka copy, transfer it.
     const withMeld: PlayerState = { ...p, hand, melds }
     return meldAkaTransition(withMeld, [action.tile], hand)
-  }).map(p => ({ ...p, ippatsuEligible: false })) as GameState['players']
+  }) as GameState['players']
 
   return {
     ...state,
@@ -1232,7 +1257,7 @@ function completeKakanDraw(state: GameState): GameState {
     hand: [...p.hand, result.tile].sort((a, b) => a - b),
     akaInHand: result.aka ? [...(p.akaInHand ?? []), result.tile] : (p.akaInHand ?? []),
     akaCount: ((p.akaInHand?.length ?? 0) + (result.aka ? 1 : 0)) + (p.akaInMelds?.length ?? 0),
-  }) as GameState['players']
+  }).map(p => ({ ...p, ippatsuEligible: false })) as GameState['players']
   return {
     ...state,
     players,
@@ -1240,7 +1265,8 @@ function completeKakanDraw(state: GameState): GameState {
     wall: result.wall.tiles,
     wallIndex: result.wall.drawIndex,
     rinshanIndex: result.wall.rinshanIndex,
-    doraMarkers: getDoraMarkers(result.wall),
+    doraMarkers: state.doraMarkers,
+    pendingKanDora: (state.pendingKanDora ?? 0) + 1,
     chankan: null,
     phase: 'discard',
     lastDrawnTile: result.tile,
@@ -1311,7 +1337,8 @@ function applyDaiminkan(state: GameState, action: { called: TileType; actor?: Pl
         wall: result.wall.tiles,
         wallIndex: result.wall.drawIndex,
         rinshanIndex: result.wall.rinshanIndex,
-        doraMarkers: getDoraMarkers(result.wall),
+        doraMarkers: state.doraMarkers,
+        pendingKanDora: (state.pendingKanDora ?? 0) + 1,
         phase: 'discard',
         lastDiscard: null,
         lastDiscardPlayer: null,
@@ -1470,6 +1497,7 @@ function newRound(
     rinshanIndex: wall.rinshanIndex,
     akaPositions: wall.akaPositions,
     doraMarkers: getDoraMarkers(wall),
+    pendingKanDora: 0,
     players: hands.map((h, i) => makePlayer(h, state.players[i], i)),
     currentPlayer: dealer,
     dealer,

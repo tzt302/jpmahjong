@@ -145,6 +145,10 @@ export interface GameState {
   /** Positions in `wall` that are aka-dora (one per 5m/5p/5s in yonma). */
   akaPositions?: Set<number>
   doraMarkers: TileType[]
+  /** Delayed kan-dora indicators from daiminkan/kakan. They are revealed
+   *  after the rinshan player's next discard, or immediately before a
+   *  chained kan. Ankan indicators are revealed immediately. */
+  pendingKanDora?: number
   /** Length matches playerCount (3 or 4). */
   players: PlayerState[]
   currentPlayer: Player

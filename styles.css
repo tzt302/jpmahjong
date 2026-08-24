@@ -192,7 +192,7 @@ nav { display: flex; gap: 5px; }
 
 .handoff,.modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(22,42,40,.88); backdrop-filter: blur(8px); padding: 20px; }
 .handoff-card,.result-card { width: min(430px, 100%); padding: 48px; text-align: center; background: var(--paper); box-shadow: 12px 14px 0 rgba(0,0,0,.18); }.handoff-card > span,.result-seal { display: grid; place-items: center; width: 75px; height: 75px; margin: auto; border: 2px solid var(--vermillion); border-radius: 50%; color: var(--vermillion); font-size: 35px; }.handoff-card p { margin: 25px 0 2px; color: var(--muted); }.handoff-card h2,.result-card h2 { margin: 4px 0 12px; font-size: 34px; }.handoff-card small { display: block; color: var(--muted); margin-bottom: 28px; }.handoff-card .primary,.result-card .primary { width: 100%; margin-top: 20px; }
-.result-card p { line-height: 1.8; color: var(--muted); }
+.result-card p { line-height: 1.8; color: var(--muted); white-space: pre-line; }
 
 @media (max-width: 900px) {
   .version { display: none; }.site-header { gap: 18px; }.home-view { grid-template-columns: 1fr; padding: 60px 7vw; }.hero-table { width: 78vw; margin: 65px auto 0; }.quiz-layout { grid-template-columns: 1fr; }.chapter-card { order: -1; }.mahjong-table { width: min(67vh, 78vw); }.table-sidebar { position: absolute; height: calc(100vh - 78px); }
