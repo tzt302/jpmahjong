@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#eee6d5">
-  <meta name="description" content="JP MAHJONG：无 AI、和纸牌谱风格的日本立直麻将与何切练习网站。">
+  <meta name="description" content="JP MAHJONG：和纸牌谱风格的完整四麻、三麻 AI 对战与何切练习网站。">
   <title>JP MAHJONG · 日本麻将</title>
-  <link rel="stylesheet" href="styles.css?v=0.8.0">
+  <link rel="stylesheet" href="styles.css?v=1.0.0-full">
 </head>
 <body>
   <div class="paper-noise" aria-hidden="true"></div>
@@ -20,7 +20,7 @@
       <button class="nav-link" data-route="table">牌桌</button>
       <button class="nav-link" data-route="quiz">何切馆</button>
     </nav>
-    <span class="version">AI BATTLE · 0.8</span>
+    <span class="version">FULL RIICHI · 1.0</span>
   </header>
 
   <main>
@@ -28,13 +28,13 @@
       <div class="hero-copy">
         <p class="kicker">打牌，也读牌</p>
         <h1>一张安静的<br><em>日本麻将牌桌</em></h1>
-        <p class="lede">没有 AI 教练和出牌提示，只保留纯粹对局。你将坐在东家位置，与三位电脑雀士完成一场日本麻将。</p>
-        <div class="mode-selector" aria-label="选择游戏模式"><button data-player-count="4" class="active"><b>四人麻雀</b><small>标准东风战</small></button><button data-player-count="3"><b>三人麻雀</b><small>移除二万至八万</small></button></div>
+        <p class="lede">没有出牌提示，只保留纯粹对局。与电脑雀士完成一场带完整役种、符数与点数结算的日本立直麻将。</p>
+        <div class="mode-selector" aria-label="选择游戏模式"><button data-player-count="4" class="active"><b>四人麻雀</b><small>标准半庄战</small></button><button data-player-count="3"><b>三人麻雀</b><small>三麻半庄 · 拔北</small></button></div>
         <div class="hero-actions">
           <button class="primary" data-route="table">开始挑战 AI <span>→</span></button>
           <button class="secondary" data-route="quiz">今日何切</button>
         </div>
-        <p class="edition-note">第二版 · 单人对战三位 AI / 自摸判定 / 每日一题 / 闯关进度</p>
+        <p class="edition-note">完整版 · 四麻与三麻半庄 / 立直鸣牌与杠 / 役种符数点数 / 每日何切</p>
       </div>
       <div class="hero-table" aria-hidden="true">
         <div class="ink-circle"></div>
@@ -97,11 +97,14 @@
             <button id="chiButton" class="action-button call-action" disabled><b>吃</b><small>CHI</small></button>
             <button id="ponButton" class="action-button call-action" disabled><b>碰</b><small>PON</small></button>
             <button id="kanButton" class="action-button call-action" disabled><b>杠</b><small>KAN</small></button>
+            <button id="kitaButton" class="action-button call-action hidden" disabled><b>拔北</b><small>KITA</small></button>
             <button id="skipCallButton" class="action-button skip-action hidden">跳过</button>
-            <button class="action-button muted-action" disabled>立直</button>
-            <button class="action-button ron-action" disabled>ロン</button>
+            <button id="riichiButton" class="action-button muted-action" disabled>立直</button>
+            <button id="ronButton" class="action-button ron-action" disabled>ロン</button>
             <button id="tsumoButton" class="action-button win hidden">自摸</button>
+            <button id="abortButton" class="action-button hidden">九種九牌</button>
             <button id="sortButton" class="action-button">理牌</button>
+            <div id="choicePanel" class="choice-panel hidden" aria-label="选择鸣牌牌型"></div>
           </div>
         </section>
       </div>
@@ -138,6 +141,6 @@
     <div class="result-card"><span class="result-seal">和</span><p id="resultEyebrow">本局结束</p><h2 id="resultTitle">東家 自摸</h2><p id="resultCopy"></p><button id="newRoundButton" class="primary">再开一局</button></div>
   </div>
 
-  <script type="module" src="src/app.js?v=0.8.0"></script>
+  <script type="module" src="src/app.js?v=1.0.0-full"></script>
 </body>
 </html>
