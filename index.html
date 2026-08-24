@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#eee6d5">
   <meta name="description" content="JP MAHJONG：无 AI、和纸牌谱风格的日本立直麻将与何切练习网站。">
   <title>JP MAHJONG · 日本麻将</title>
-  <link rel="stylesheet" href="styles.css?v=0.7.0">
+  <link rel="stylesheet" href="styles.css?v=0.8.0">
 </head>
 <body>
   <div class="paper-noise" aria-hidden="true"></div>
@@ -20,7 +20,7 @@
       <button class="nav-link" data-route="table">牌桌</button>
       <button class="nav-link" data-route="quiz">何切馆</button>
     </nav>
-    <span class="version">AI BATTLE · 0.7</span>
+    <span class="version">AI BATTLE · 0.8</span>
   </header>
 
   <main>
@@ -29,6 +29,7 @@
         <p class="kicker">打牌，也读牌</p>
         <h1>一张安静的<br><em>日本麻将牌桌</em></h1>
         <p class="lede">没有 AI 教练和出牌提示，只保留纯粹对局。你将坐在东家位置，与三位电脑雀士完成一场日本麻将。</p>
+        <div class="mode-selector" aria-label="选择游戏模式"><button data-player-count="4" class="active"><b>四人麻雀</b><small>标准东风战</small></button><button data-player-count="3"><b>三人麻雀</b><small>移除二万至八万</small></button></div>
         <div class="hero-actions">
           <button class="primary" data-route="table">开始挑战 AI <span>→</span></button>
           <button class="secondary" data-route="quiz">今日何切</button>
@@ -58,6 +59,7 @@
           <h2>東一局</h2>
           <ol id="seatList" class="seat-list"></ol>
           <div class="rule-note"><strong>当前规则</strong><span>玩家对战三位 AI<br>无 AI 教练 · 不提示切牌</span></div>
+          <div class="sidebar-mode"><button data-player-count="4">四麻</button><button data-player-count="3">三麻</button></div>
           <button id="restartButton" class="text-button">重新开局</button>
         </div>
       </aside>
@@ -136,6 +138,6 @@
     <div class="result-card"><span class="result-seal">和</span><p id="resultEyebrow">本局结束</p><h2 id="resultTitle">東家 自摸</h2><p id="resultCopy"></p><button id="newRoundButton" class="primary">再开一局</button></div>
   </div>
 
-  <script type="module" src="src/app.js?v=0.7.0"></script>
+  <script type="module" src="src/app.js?v=0.8.0"></script>
 </body>
 </html>

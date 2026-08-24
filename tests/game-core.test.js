@@ -9,6 +9,14 @@ test('new game deals 14 tiles to east and 13 to the others', () => {
   assert.equal(game.wall.length, 83);
 });
 
+test('three-player mode deals three hands and removes 2m through 8m', () => {
+  const game = createGame(() => 0.37, 3);
+  assert.equal(game.playerCount, 3);
+  assert.deepEqual(game.hands.map(hand => hand.length), [14, 13, 13]);
+  assert.equal(game.wall.length, 68);
+  assert.equal([...game.wall, ...game.hands.flat()].some(tile => tile >= 1 && tile <= 7), false);
+});
+
 test('discard advances turn and draws for next player', () => {
   const game = createGame(() => 0.25);
   const before = game.wall.length;

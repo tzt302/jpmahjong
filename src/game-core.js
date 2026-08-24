@@ -2,14 +2,16 @@ import { createWall, shuffle, isWinningHand, analyzeDiscards } from './engine.js
 
 export const WINDS = ['東', '南', '西', '北'];
 
-export function createGame(random = Math.random) {
-  const wall = shuffle(createWall(4), random);
-  const hands = [[], [], [], []];
+export function createGame(random = Math.random, playerCount = 4) {
+  if (![3, 4].includes(playerCount)) throw new Error('仅支持三麻或四麻');
+  const tiles = createWall(4).filter(tile => playerCount === 4 || tile === 0 || tile >= 8);
+  const wall = shuffle(tiles, random);
+  const hands = Array.from({ length: playerCount }, () => []);
   for (let round = 0; round < 13; round += 1) {
-    for (let player = 0; player < 4; player += 1) hands[player].push(wall.pop());
+    for (let player = 0; player < playerCount; player += 1) hands[player].push(wall.pop());
   }
   hands.forEach(hand => hand.sort((a, b) => a - b));
-  const game = { wall, hands, rivers: [[], [], [], []], melds: [[], [], [], []], pendingCall: null, current: 0, drawn: null, phase: 'playing', winner: null };
+  const game = { playerCount, wall, hands, rivers: Array.from({ length: playerCount }, () => []), melds: Array.from({ length: playerCount }, () => []), pendingCall: null, current: 0, drawn: null, phase: 'playing', winner: null };
   drawForCurrent(game);
   return game;
 }
@@ -38,7 +40,7 @@ export function discard(game, index, { deferAdvance = false } = {}) {
     game.drawn = null;
     return tile;
   }
-  game.current = (game.current + 1) % 4;
+  game.current = (game.current + 1) % game.playerCount;
   game.drawn = null;
   drawForCurrent(game);
   return tile;
@@ -53,7 +55,7 @@ export function getHumanCallOptions(game) {
   const count = hand.filter(value => value === tile).length;
   result.pon = count >= 2;
   result.kan = count >= 3;
-  if (pending.player === 3 && tile < 27) {
+  if (pending.player === game.playerCount - 1 && tile < 27) {
     const suitStart = Math.floor(tile / 9) * 9;
     for (let start = tile - 2; start <= tile; start += 1) {
       const sequence = [start, start + 1, start + 2];
@@ -90,7 +92,7 @@ export function claimHumanCall(game, type) {
 
 export function skipHumanCall(game) {
   if (!game.pendingCall) return;
-  game.current = (game.pendingCall.player + 1) % 4;
+  game.current = (game.pendingCall.player + 1) % game.playerCount;
   game.pendingCall = null;
   drawForCurrent(game);
 }

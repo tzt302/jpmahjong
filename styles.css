@@ -627,3 +627,18 @@ body[data-view="table"] .meld-group img { width: 100%; height: 100%; object-fit:
   body[data-view="table"] .call-action b { font-size: 16px; }
   body[data-view="table"] .call-action small { display: none; }
 }
+
+/* v0.8 — four-player / three-player mode selection */
+.mode-selector { display: grid; grid-template-columns: repeat(2,minmax(0,190px)); gap: 9px; margin-top: 26px; }
+.mode-selector button { padding: 13px 15px; text-align: left; border: 1px solid rgba(41,74,80,.35); background: rgba(244,238,224,.62); color: #294a50; cursor: pointer; }
+.mode-selector button b,.mode-selector button small { display: block; }.mode-selector button b { font-size: 15px; }.mode-selector button small { margin-top: 4px; color: #70756f; font-size: 10px; }
+.mode-selector button.active { color: #fff5e5; border-color: #a43f30; background: #a43f30; box-shadow: 0 4px 0 #743126; }.mode-selector button.active small { color: #f2d8ce; }
+.sidebar-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 14px; }
+.sidebar-mode button { padding: 8px; border: 1px solid rgba(41,74,80,.35); background: transparent; cursor: pointer; }
+.sidebar-mode button.active { color: #fff4e4; border-color: #a43f30; background: #a43f30; }
+body[data-players="3"] .plaque-left,
+body[data-players="3"] .wall-left,
+body[data-players="3"] #river3,
+body[data-players="3"] .marker-left { display: none !important; }
+body[data-players="3"] .mahjong-table::after { content: "三人麻雀"; position: absolute; left: 8%; top: 46%; color: rgba(31,58,67,.30); font-size: 11px; letter-spacing: .26em; transform: rotate(-90deg); }
+@media (max-width:600px) { .mode-selector { grid-template-columns: 1fr 1fr; }.mode-selector button { padding: 11px 9px; } }

@@ -11,6 +11,7 @@ let lastDiscardPlayer = null;
 let audioContext = null;
 let quizIndex = Number(localStorage.getItem('jpmahjong-quiz-index') || 0) % QUESTIONS.length;
 let quizDone = JSON.parse(localStorage.getItem('jpmahjong-quiz-done') || '[]');
+let selectedPlayerCount = Number(localStorage.getItem('jpmahjong-player-count')) === 3 ? 3 : 4;
 
 function tileMarkup(tile, className = '') {
   return `<button class="tile ${className}" data-tile="${tile}" aria-label="${TILE_LABELS[tile]}">${tileFaceMarkup(tile)}</button>`;
@@ -107,15 +108,21 @@ $$('[data-route]').forEach(control => control.addEventListener('click', event =>
   route(control.dataset.route);
 }));
 
+function updateModeUI() {
+  $$('[data-player-count]').forEach(button => button.classList.toggle('active', Number(button.dataset.playerCount) === selectedPlayerCount));
+}
+
 function startGame() {
-  game = createGame();
+  game = createGame(Math.random, selectedPlayerCount);
+  document.body.dataset.players = String(selectedPlayerCount);
   botBusy = false;
   $('#resultModal').classList.add('hidden');
   renderGame();
 }
 
 function renderGame() {
-  $('#wallText').textContent = `牌山 ${game.wall.length}`;
+  $('#wallText').textContent = `${game.playerCount === 3 ? '三麻' : '四麻'} · 牌山 ${game.wall.length}`;
+  $('.rule-note span').innerHTML = `玩家对战${game.playerCount === 3 ? '两位' : '三位'} AI<br>${game.playerCount === 3 ? '三麻 · 无二万至八万' : '四麻 · 标准牌组'}`;
   $('#centerWall').textContent = game.wall.length;
   const callOptions = getHumanCallOptions(game);
   const callPending = Boolean(game.pendingCall);
@@ -124,7 +131,7 @@ function renderGame() {
   $('#turnLabel').textContent = humanTurn ? 'YOUR SEAT' : 'OPPONENT TURN';
   $('#turnName').textContent = humanTurn ? '你 · 東家' : `AI · ${WINDS[game.current]}家`;
   $('#turnMessage').textContent = game.phase === 'draw' ? '牌山已尽' : callPending ? '可以鸣牌，或选择跳过' : humanTurn ? '选择一张牌打出' : '电脑雀士正在思考…';
-  $('#seatList').innerHTML = WINDS.map((wind, i) => `<li class="${i === game.current ? 'current' : ''}"><b>${i === 0 ? '你' : `AI ${wind}家`}</b><span>${game.rivers[i].length} 枚切牌</span></li>`).join('');
+  $('#seatList').innerHTML = WINDS.slice(0, game.playerCount).map((wind, i) => `<li class="${i === game.current ? 'current' : ''}"><b>${i === 0 ? '你' : `AI ${wind}家`}</b><span>${game.rivers[i].length} 枚切牌</span></li>`).join('');
   game.rivers.forEach((river, i) => {
     $(`#river${i}`).innerHTML = river.map((tile, index) => `<span class="river-tile ${i === lastDiscardPlayer && index === river.length - 1 ? 'land' : ''}">${tileFaceMarkup(tile)}</span>`).join('');
   });
@@ -228,6 +235,13 @@ function showResult(title, copy) {
 
 $('#newRoundButton').addEventListener('click', startGame);
 $('#restartButton').addEventListener('click', startGame);
+$$('[data-player-count]').forEach(button => button.addEventListener('click', () => {
+  selectedPlayerCount = Number(button.dataset.playerCount);
+  localStorage.setItem('jpmahjong-player-count', String(selectedPlayerCount));
+  updateModeUI();
+  route('table');
+  startGame();
+}));
 $('#sidebarToggle').addEventListener('click', () => {
   const sidebar = $('#tableSidebar');
   const collapsed = sidebar.classList.toggle('collapsed');
@@ -287,4 +301,5 @@ $('#nextQuestion').addEventListener('click', () => {
 
 const initial = ['home', 'table', 'quiz'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'home';
 buildTableFurniture();
+updateModeUI();
 route(initial);
