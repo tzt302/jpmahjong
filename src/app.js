@@ -202,9 +202,12 @@ function renderGame() {
   const plaqueSelectors = { 1: '.plaque-right', 2: '.plaque-top', 3: '.plaque-left' };
   const markerSelectors = { 0: '.marker-bottom', 1: '.marker-right', 2: '.marker-top', 3: '.marker-left' };
   snapshot.seats.forEach(seat => {
-    $(markerSelectors[seat.position]).textContent = seat.windLabel;
+    const marker = $(markerSelectors[seat.position]);
+    marker.textContent = seat.windLabel;
+    marker.classList.toggle('riichi-player', seat.riichi);
     const plaque = plaqueSelectors[seat.position] && $(plaqueSelectors[seat.position]);
     if (plaque) {
+      plaque.classList.toggle('riichi-player', seat.riichi);
       plaque.querySelector('b').textContent = seat.windLabel;
       plaque.querySelector('span').textContent = ['你', '竹林の道', '静寂の庭', '月下の牌'][seat.playerId] + (seat.kitaCount ? ` · 北×${seat.kitaCount}` : '');
       plaque.querySelector('strong').textContent = seat.score.toLocaleString('zh-CN');
@@ -249,8 +252,7 @@ function renderGame() {
   );
   $('.hand-actions').classList.toggle('call-ready', responseTurn);
   $('.hand-actions').classList.toggle('decision-ready', decisionReady);
-  $('#actionBackdrop').classList.toggle('hidden', !decisionReady);
-  $('#actionBackdrop').classList.toggle('riichi-armed', riichiArmed);
+  $('#actionBackdrop').classList.add('hidden');
   $('#hand').classList.toggle('riichi-select', riichiArmed);
   bindHand();
   lastDiscardPlayer = null;

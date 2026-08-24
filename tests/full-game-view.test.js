@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Majiang } from '../src/riichi-core.js';
-import { coreTileToNumber, concealedTiles, meldTiles, riverTiles, relativeSeat } from '../src/full-game-view.js';
+import { coreTileToNumber, concealedTiles, meldTiles, riverTiles, relativeSeat, tableSnapshot } from '../src/full-game-view.js';
 
 test('core tile notation maps to the existing 0-33 tile assets', () => {
   assert.equal(coreTileToNumber('m1'), 0);
@@ -31,4 +31,19 @@ test('human remains at the bottom while winds rotate around the table', () => {
   assert.equal(relativeSeat(3, 2), 1);
   assert.equal(relativeSeat(0, 2), 2);
   assert.equal(relativeSeat(1, 2), 3);
+});
+
+test('table snapshot keeps every opponent riichi state for persistent UI marks', () => {
+  const hands = Array.from({ length: 4 }, () => Majiang.Shoupai.fromString('m123456789p123z11'));
+  hands[2]._lizhi = true;
+  const snapshot = tableSnapshot({
+    human: { _menfeng: 0 },
+    model: {
+      shan: { paishu: 60, baopai: ['m1'] }, player_id: [0, 1, 2, 3], defen: [25000, 25000, 25000, 25000],
+      shoupai: hands, he: Array.from({ length: 4 }, () => ({ _pai: [] })),
+      zhuangfeng: 0, jushu: 0, changbang: 0, lizhibang: 1, lunban: 2
+    }
+  });
+  assert.equal(snapshot.seats.find(seat => seat.wind === 2).riichi, true);
+  assert.equal(snapshot.seats.find(seat => seat.wind === 1).riichi, false);
 });

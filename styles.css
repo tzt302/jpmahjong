@@ -644,6 +644,35 @@ body[data-view="table"] .meld-group img { width: 100%; height: 100%; object-fit:
   body[data-view="table"] .call-action small { display: none; }
 }
 
+/* v1.3.1 — persistent opponent riichi marks and compact action picker */
+.river-tile.riichi { margin: 0; transform: none; overflow: visible; }
+.river-tile.riichi img { transform: rotate(90deg) scale(.72); filter: drop-shadow(0 0 3px rgba(163,61,47,.42)); }
+.player-plaque.riichi-player { border-color: rgba(167,57,43,.82); box-shadow: 0 0 0 3px rgba(167,57,43,.12), 2px 3px 0 rgba(65,57,42,.09); }
+.player-plaque.riichi-player::after { content: "立直"; position: absolute; right: 12px; top: 100%; padding: 3px 12px 4px; color: #fff3dd; background: #a53d30; font: 800 12px/1.2 "Noto Serif SC","Yu Mincho",serif; letter-spacing: .15em; box-shadow: 0 3px 0 #713027; animation: opponent-riichi-mark .75s ease-in-out infinite alternate; }
+.player-plaque.riichi-player strong { margin-right: 54px; color: #a33d2f; font-weight: 700; }
+.seat-marker.riichi-player { color: #fff3df; border-color: #d69b75; background: #a43d30; box-shadow: 0 0 0 4px rgba(164,61,48,.17), 0 0 17px rgba(164,61,48,.42); }
+.seat-marker.riichi-player::after { content: "立直"; position: absolute; left: 50%; top: calc(100% + 3px); width: max-content; padding: 2px 5px; color: #a43d30; background: #f3e8d3; font: 800 8px/1 sans-serif; letter-spacing: .08em; transform: translateX(-50%); }
+
+body[data-view="table"] .hand-actions,
+body[data-view="table"] .hand-actions.decision-ready.call-ready {
+  width: max-content; max-width: calc(100vw - 28px); min-height: 76px; padding: 14px 18px; gap: 8px;
+  border-color: rgba(224,204,164,.48); background: rgba(19,40,44,.97);
+  box-shadow: 0 13px 34px rgba(0,0,0,.34), inset 0 1px rgba(255,255,255,.09);
+}
+body[data-view="table"] .hand-actions::before { padding-inline: 18px; }
+body[data-view="table"] .hand-actions .call-status { display: none; }
+body[data-view="table"] .hand-actions .action-button { min-width: 102px; min-height: 52px; padding-inline: 18px; }
+body[data-view="table"] .hand-actions .action-button b { font-size: 24px; }
+
+@keyframes opponent-riichi-mark { from { filter: brightness(.92); transform: translateY(0); } to { filter: brightness(1.12); transform: translateY(2px); } }
+
+@media (max-width: 600px), (max-height: 600px) {
+  body[data-view="table"] .hand-actions,
+  body[data-view="table"] .hand-actions.decision-ready.call-ready { width: max-content; max-width: calc(100vw - 16px); min-height: 64px; padding: 10px 8px; gap: 5px; }
+  body[data-view="table"] .hand-actions .action-button { min-width: 66px; min-height: 46px; padding-inline: 10px; }
+  .player-plaque.riichi-player::after { right: 5px; padding: 2px 7px 3px; font-size: 9px; }
+}
+
 /* v0.8 — four-player / three-player mode selection */
 .mode-selector { display: grid; grid-template-columns: repeat(2,minmax(0,190px)); gap: 9px; margin-top: 26px; }
 .mode-selector button { padding: 13px 15px; text-align: left; border: 1px solid rgba(41,74,80,.35); background: rgba(244,238,224,.62); color: #294a50; cursor: pointer; }

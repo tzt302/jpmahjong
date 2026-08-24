@@ -69,6 +69,7 @@ export function tableSnapshot(session) {
       playerId,
       human: playerId === 0,
       score: model.defen[playerId],
+      riichi: Boolean(model.shoupai[wind]?._lizhi),
       river: riverTiles(model.he[wind]),
       melds: (model.shoupai[wind]?._fulou || []).map(code => ({ code, tiles: meldTiles(code) }))
     };
@@ -123,6 +124,7 @@ function sanmaTableSnapshot(session) {
       playerId,
       human: playerId === 0,
       score: player.score,
+      riichi: Boolean(player.riichi),
       kitaCount: player.kitaCount,
       river: player.discards.map(discard => ({ tile: discard.tile, code: String(discard.tile), red: Boolean(discard.aka), riichi: Boolean(discard.riichi), claimed: false })),
       melds: player.melds.map(meld => {
