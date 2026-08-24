@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#eee6d5">
   <meta name="description" content="JP MAHJONG：无 AI、和纸牌谱风格的日本立直麻将与何切练习网站。">
   <title>JP MAHJONG · 日本麻将</title>
-  <link rel="stylesheet" href="styles.css?v=0.6.1">
+  <link rel="stylesheet" href="styles.css?v=0.7.0">
 </head>
 <body>
   <div class="paper-noise" aria-hidden="true"></div>
@@ -20,7 +20,7 @@
       <button class="nav-link" data-route="table">牌桌</button>
       <button class="nav-link" data-route="quiz">何切馆</button>
     </nav>
-    <span class="version">AI BATTLE · 0.6.1</span>
+    <span class="version">AI BATTLE · 0.7</span>
   </header>
 
   <main>
@@ -88,8 +88,14 @@
         </div>
         <section class="hand-dock">
           <div class="turn-line"><span id="turnSeal">東</span><div><small id="turnLabel">YOUR SEAT</small><strong id="turnName">東家</strong></div><p id="turnMessage">选择一张牌打出</p><b class="player-score">25,000</b></div>
+          <div id="meldArea" class="meld-area" aria-label="副露"></div>
           <div id="hand" class="hand" aria-label="当前玩家手牌"></div>
           <div class="hand-actions">
+            <span id="callStatus" class="call-status">鸣牌</span>
+            <button id="chiButton" class="action-button call-action" disabled><b>吃</b><small>CHI</small></button>
+            <button id="ponButton" class="action-button call-action" disabled><b>碰</b><small>PON</small></button>
+            <button id="kanButton" class="action-button call-action" disabled><b>杠</b><small>KAN</small></button>
+            <button id="skipCallButton" class="action-button skip-action hidden">跳过</button>
             <button class="action-button muted-action" disabled>立直</button>
             <button class="action-button ron-action" disabled>ロン</button>
             <button id="tsumoButton" class="action-button win hidden">自摸</button>
@@ -130,6 +136,6 @@
     <div class="result-card"><span class="result-seal">和</span><p id="resultEyebrow">本局结束</p><h2 id="resultTitle">東家 自摸</h2><p id="resultCopy"></p><button id="newRoundButton" class="primary">再开一局</button></div>
   </div>
 
-  <script type="module" src="src/app.js?v=0.6.1"></script>
+  <script type="module" src="src/app.js?v=0.7.0"></script>
 </body>
 </html>

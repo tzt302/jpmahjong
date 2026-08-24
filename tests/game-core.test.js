@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGame, discard, canTsumo, declareTsumo, chooseBotDiscard } from '../src/game-core.js';
+import { createGame, discard, canTsumo, declareTsumo, chooseBotDiscard, getHumanCallOptions, claimHumanCall, skipHumanCall } from '../src/game-core.js';
 
 test('new game deals 14 tiles to east and 13 to the others', () => {
   const game = createGame(() => 0.5);
@@ -40,4 +40,26 @@ test('bot chooses a valid discard index', () => {
   discard(game, 0);
   const index = chooseBotDiscard(game);
   assert.ok(index >= 0 && index < 14);
+});
+
+test('human can pon an AI discard and the river tile becomes an open meld', () => {
+  const game = createGame(() => 0.22);
+  game.hands[0] = [5,5,9,10,11,12,13,14,18,19,20,27,28];
+  game.rivers[1] = [5];
+  game.pendingCall = { player: 1, tile: 5 };
+  assert.equal(getHumanCallOptions(game).pon, true);
+  claimHumanCall(game, 'pon');
+  assert.equal(game.melds[0][0].type, 'pon');
+  assert.equal(game.hands[0].length, 11);
+  assert.equal(game.rivers[1].length, 0);
+  assert.equal(game.current, 0);
+});
+
+test('skipping a call advances to the next player and draws', () => {
+  const game = createGame(() => 0.18);
+  game.pendingCall = { player: 1, tile: 3 };
+  const wallBefore = game.wall.length;
+  skipHumanCall(game);
+  assert.equal(game.current, 2);
+  assert.equal(game.wall.length, wallBefore - 1);
 });
