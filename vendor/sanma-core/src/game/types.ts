@@ -35,13 +35,13 @@ export const ActionKind = {
 export type ActionKind = typeof ActionKind[keyof typeof ActionKind]
 
 export type Action =
-  | { kind: ActionKind.Discard; tile: TileType }
+  | { kind: ActionKind.Discard; tile: TileType; aka?: boolean }
   | { kind: ActionKind.Chi; tiles: [TileType, TileType]; called: TileType; useAka?: boolean }
   | { kind: ActionKind.Pon; called: TileType }
   | { kind: ActionKind.Ankan; tile: TileType }
   | { kind: ActionKind.Kakan; tile: TileType }
   | { kind: ActionKind.Daiminkan; called: TileType }
-  | { kind: ActionKind.Riichi; tile: TileType }
+  | { kind: ActionKind.Riichi; tile: TileType; aka?: boolean }
   | { kind: ActionKind.Tsumo }
   | { kind: ActionKind.Ron; called: TileType }
   | { kind: ActionKind.Pass }
@@ -59,6 +59,9 @@ export interface Meld {
 export interface DiscardEntry {
   tile: TileType
   tsumogiri: boolean
+  aka?: boolean
+  /** The sideways declaration tile that completed a riichi declaration. */
+  riichi?: boolean
 }
 
 export interface PlayerState {
@@ -105,6 +108,10 @@ export interface PlayerState {
    * happen later in the hand. Default false; legacy callers may omit.
    */
   daburii?: boolean
+  /** Ippatsu belongs to an individual riichi player, not to the table. */
+  ippatsuEligible?: boolean
+  /** False once this player discards a simple tile or any discard is called. */
+  nagashiEligible?: boolean
 }
 
 export type GamePhase =
@@ -151,6 +158,7 @@ export interface GameState {
   lastDiscard: TileType | null
   lastDiscardPlayer: Player | null
   lastDrawnTile: TileType | null
+  lastDrawnAka?: boolean
   ippatsu: boolean
   /**
    * True when the current actor's `lastDrawnTile` was drawn from the
@@ -196,4 +204,6 @@ export interface GameState {
    * default — Mahjong Soul does not use this rule.
    */
   sanwahou: boolean
+  /** Why the hand ended without a winner; abortive draws never pay noten. */
+  ryukyokuReason?: 'exhaustive' | 'kyushukyuhai' | 'suukaikan' | 'suufonrenda' | 'sanwahou'
 }

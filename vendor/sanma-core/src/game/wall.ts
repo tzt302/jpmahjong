@@ -9,6 +9,7 @@ export interface Wall {
   drawIndex: number
   rinshanIndex: number
   doraCount: number
+  playerCount: 3 | 4
   /**
    * Wall positions (indices into `tiles`) that are aka-dora (赤ドラ).
    * Exactly one position per aka-eligible tile kind (3 in yonma — 5m,
@@ -46,7 +47,7 @@ export function createWall(playerCount: 3 | 4 = 4): Wall {
     }
   }
   const drawIndex = 13 * playerCount
-  return { tiles, drawIndex, rinshanIndex: tiles.length - 1, doraCount: 1, akaPositions }
+  return { tiles, drawIndex, rinshanIndex: tiles.length - 1, doraCount: 1, akaPositions, playerCount }
 }
 
 function shuffle<T>(arr: T[]): void {
@@ -88,9 +89,19 @@ function usedRinshans(wall: Wall): number {
   return wall.tiles.length - 1 - wall.rinshanIndex
 }
 
+function rinshanCapacity(wall: Wall): number {
+  // Tenhou-style sanma has eight replacement tiles; yonma has four.
+  return wall.playerCount === 3 ? 8 : 4
+}
+
+function deadWallSize(wall: Wall): number {
+  // Replacement tiles plus five visible/ura indicator pairs.
+  return rinshanCapacity(wall) + 10
+}
+
 export function drawTile(wall: Wall): { tile: TileType; aka: boolean; wall: Wall } | null {
   // Live wall ends at tiles.length - 14 - usedRinshans (each kan shrinks it).
-  const normalDrawEnd = wall.tiles.length - 14 - usedRinshans(wall)
+  const normalDrawEnd = wall.tiles.length - deadWallSize(wall) - usedRinshans(wall)
   if (wall.drawIndex >= normalDrawEnd) return null
   const pos = wall.drawIndex
   return {
@@ -101,7 +112,7 @@ export function drawTile(wall: Wall): { tile: TileType; aka: boolean; wall: Wall
 }
 
 export function drawRinshan(wall: Wall): { tile: TileType; aka: boolean; wall: Wall } | null {
-  if (wall.rinshanIndex <= wall.drawIndex) return null
+  if (usedRinshans(wall) >= rinshanCapacity(wall) || wall.rinshanIndex <= wall.drawIndex) return null
   const pos = wall.rinshanIndex
   return {
     tile: wall.tiles[pos],
@@ -112,13 +123,21 @@ export function drawRinshan(wall: Wall): { tile: TileType; aka: boolean; wall: W
 
 export function getDoraMarkers(wall: Wall): TileType[] {
   const markers: TileType[] = []
+  const first = wall.tiles.length - rinshanCapacity(wall) - 1
   for (let i = 0; i < wall.doraCount; i++) {
-    markers.push(wall.tiles[wall.rinshanIndex - 3 - i * 2])
+    markers.push(wall.tiles[first - i * 2])
   }
   return markers
 }
 
+export function getUraDoraMarkers(wall: Wall): TileType[] {
+  const markers: TileType[] = []
+  const first = wall.tiles.length - rinshanCapacity(wall) - 2
+  for (let i = 0; i < wall.doraCount; i++) markers.push(wall.tiles[first - i * 2])
+  return markers
+}
+
 export function remainingTiles(wall: Wall): number {
-  const normalDrawEnd = wall.tiles.length - 14 - usedRinshans(wall)
+  const normalDrawEnd = wall.tiles.length - deadWallSize(wall) - usedRinshans(wall)
   return normalDrawEnd - wall.drawIndex
 }

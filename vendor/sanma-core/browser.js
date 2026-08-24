@@ -74,7 +74,7 @@ function createWall(playerCount = 4) {
     }
   }
   const drawIndex = 13 * playerCount;
-  return { tiles, drawIndex, rinshanIndex: tiles.length - 1, doraCount: 1, akaPositions };
+  return { tiles, drawIndex, rinshanIndex: tiles.length - 1, doraCount: 1, akaPositions, playerCount };
 }
 function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -98,8 +98,14 @@ function dealHaipai(wall, playerCount = 4) {
 function usedRinshans(wall) {
   return wall.tiles.length - 1 - wall.rinshanIndex;
 }
+function rinshanCapacity(wall) {
+  return wall.playerCount === 3 ? 8 : 4;
+}
+function deadWallSize(wall) {
+  return rinshanCapacity(wall) + 10;
+}
 function drawTile(wall) {
-  const normalDrawEnd = wall.tiles.length - 14 - usedRinshans(wall);
+  const normalDrawEnd = wall.tiles.length - deadWallSize(wall) - usedRinshans(wall);
   if (wall.drawIndex >= normalDrawEnd) return null;
   const pos = wall.drawIndex;
   return {
@@ -109,7 +115,7 @@ function drawTile(wall) {
   };
 }
 function drawRinshan(wall) {
-  if (wall.rinshanIndex <= wall.drawIndex) return null;
+  if (usedRinshans(wall) >= rinshanCapacity(wall) || wall.rinshanIndex <= wall.drawIndex) return null;
   const pos = wall.rinshanIndex;
   return {
     tile: wall.tiles[pos],
@@ -119,13 +125,20 @@ function drawRinshan(wall) {
 }
 function getDoraMarkers(wall) {
   const markers = [];
+  const first = wall.tiles.length - rinshanCapacity(wall) - 1;
   for (let i = 0; i < wall.doraCount; i++) {
-    markers.push(wall.tiles[wall.rinshanIndex - 3 - i * 2]);
+    markers.push(wall.tiles[first - i * 2]);
   }
   return markers;
 }
+function getUraDoraMarkers(wall) {
+  const markers = [];
+  const first = wall.tiles.length - rinshanCapacity(wall) - 2;
+  for (let i = 0; i < wall.doraCount; i++) markers.push(wall.tiles[first - i * 2]);
+  return markers;
+}
 function remainingTiles(wall) {
-  const normalDrawEnd = wall.tiles.length - 14 - usedRinshans(wall);
+  const normalDrawEnd = wall.tiles.length - deadWallSize(wall) - usedRinshans(wall);
   return normalDrawEnd - wall.drawIndex;
 }
 
@@ -812,7 +825,7 @@ function buildYakuContext(state, winner, isTsumo, winningTile) {
     seatWind,
     isTsumo,
     isRiichi: player.riichi,
-    isIppatsu: state.ippatsu && player.riichi,
+    isIppatsu: player.ippatsuEligible === true && player.riichi,
     // Rinshan kaihou: the winning tsumo was a rinshan draw (state.atRinshan
     // set true by applyAnkan/Kakan/Daiminkan, cleared on discard).
     isRinshan: isTsumo && state.atRinshan === true,
@@ -828,13 +841,17 @@ function buildYakuContext(state, winner, isTsumo, winningTile) {
       tiles: state.wall,
       drawIndex: state.wallIndex,
       rinshanIndex: state.rinshanIndex,
-      doraCount: state.doraMarkers.length
+      doraCount: state.doraMarkers.length,
+      akaPositions: state.akaPositions ?? /* @__PURE__ */ new Set(),
+      playerCount: state.playerCount
     }) === 0,
     isHoutei: !isTsumo && !state.chankan && remainingTiles({
       tiles: state.wall,
       drawIndex: state.wallIndex,
       rinshanIndex: state.rinshanIndex,
-      doraCount: state.doraMarkers.length
+      doraCount: state.doraMarkers.length,
+      akaPositions: state.akaPositions ?? /* @__PURE__ */ new Set(),
+      playerCount: state.playerCount
     }) === 0,
     // First turn = before any player has called/discarded a 2nd time.
     // Conservative: require turnCount <= playerCount AND all players still
@@ -843,7 +860,7 @@ function buildYakuContext(state, winner, isTsumo, winningTile) {
     // turn (mirrors mahjong-helper's isPlayerDaburii kita check). Without
     // this, daburi could falsely fire if an opponent kita'd then a player
     // declared riichi on turn 1.
-    isFirstTurn: state.turnCount <= state.playerCount && state.players.every((p) => p.isMenzen) && (state.playerCount !== 3 || state.players.every((p) => p.kitaCount === 0)),
+    isFirstTurn: state.turnCount <= state.playerCount && state.players.every((p) => p.melds.length === 0) && (state.playerCount !== 3 || state.players.every((p) => p.kitaCount === 0)),
     winningTile,
     koyakuMode: state.koyakuMode
   };
@@ -864,6 +881,20 @@ function countDora(state, winner, isTsumo, winningTile) {
     const doraTile = doraFromIndicator(indicator, isSanma);
     for (const t of allTiles) {
       if (t === doraTile) count++;
+    }
+  }
+  if (player.riichi) {
+    const uraMarkers = getUraDoraMarkers({
+      tiles: state.wall,
+      drawIndex: state.wallIndex,
+      rinshanIndex: state.rinshanIndex,
+      doraCount: state.doraMarkers.length,
+      akaPositions: state.akaPositions ?? /* @__PURE__ */ new Set(),
+      playerCount: state.playerCount
+    });
+    for (const indicator of uraMarkers) {
+      const doraTile = doraFromIndicator(indicator, isSanma);
+      for (const t of allTiles) if (t === doraTile) count++;
     }
   }
   if (player.akaCount && player.akaCount > 0) {
@@ -925,7 +956,7 @@ function evaluateWin(state, winner, isTsumo, winningTile) {
     winner,
     yakuList: bestYaku.yaku,
     yakuHan: bestYaku.totalHan,
-    doraCount: hasYaku ? doraCount : 0,
+    doraCount: hasYaku && !bestYaku.isYakuman ? doraCount : 0,
     totalHan: hasYaku ? bestTotalHan : 0,
     fu: hasYaku ? bestFu : 30,
     scoreResult: bestScore ?? fallbackScore,
@@ -976,7 +1007,7 @@ function createGame(opts = {}) {
   const playerCount = opts.playerCount ?? 4;
   const requested = opts.endRound ?? 8;
   const endRound = playerCount === 3 ? requested === 4 ? 3 : requested === 8 ? 6 : requested : requested;
-  const wall = opts.fixedWall ? { tiles: opts.fixedWall, drawIndex: 0, rinshanIndex: opts.fixedWall.length, doraCount: 1, akaPositions: /* @__PURE__ */ new Set() } : createWall(playerCount);
+  const wall = opts.fixedWall ? { tiles: opts.fixedWall, drawIndex: 0, rinshanIndex: opts.fixedWall.length - 1, doraCount: 1, akaPositions: /* @__PURE__ */ new Set(), playerCount } : createWall(playerCount);
   const { hands, akaInHand } = opts.fixedHands ? { hands: opts.fixedHands, akaInHand: opts.fixedAka ?? opts.fixedHands.map(() => []) } : dealHaipai(wall, playerCount);
   const doraMarkers = getDoraMarkers(wall);
   const dealer = (opts.startDealer ?? 0) % playerCount;
@@ -992,7 +1023,10 @@ function createGame(opts = {}) {
     kitaCount: 0,
     akaCount: akaInHand[idx].length,
     akaInHand: akaInHand[idx].slice(),
-    akaInMelds: []
+    akaInMelds: [],
+    daburii: false,
+    ippatsuEligible: false,
+    nagashiEligible: true
   });
   return {
     playerCount,
@@ -1014,6 +1048,7 @@ function createGame(opts = {}) {
     lastDiscard: null,
     lastDiscardPlayer: null,
     lastDrawnTile: null,
+    lastDrawnAka: false,
     ippatsu: false,
     koyakuMode: opts.koyakuMode ?? false,
     sanwahou: opts.sanwahou ?? false,
@@ -1026,16 +1061,17 @@ function getWall(state) {
     drawIndex: state.wallIndex,
     rinshanIndex: state.rinshanIndex,
     doraCount: state.doraMarkers.length,
-    akaPositions: state.akaPositions ?? /* @__PURE__ */ new Set()
+    akaPositions: state.akaPositions ?? /* @__PURE__ */ new Set(),
+    playerCount: state.playerCount
   };
 }
 var AKA_KIND = /* @__PURE__ */ new Set([4, 13, 22]);
-function discardAkaTransition(p, tile, handAfter) {
+function discardAkaTransition(p, tile, handAfter, forceAka = false) {
   if (!AKA_KIND.has(tile) || !p.akaInHand?.includes(tile)) {
     return { player: p, akaDiscarded: false };
   }
   const remaining = handAfter.filter((t) => t === tile).length;
-  if (remaining >= 1) {
+  if (!forceAka && remaining >= 1) {
     return { player: p, akaDiscarded: false };
   }
   const newAkaInHand = (p.akaInHand ?? []).filter((t) => t !== tile);
@@ -1065,6 +1101,34 @@ function meldAkaTransition(p, consumedFromHand, handAfter) {
     akaCount: akaInHand.length + akaInMelds.length
   };
 }
+function waitsOf(hand, playerCount) {
+  const waits = [];
+  for (let t = 0; t < 34; t = t + 1) {
+    if (playerCount === 3 && t >= 1 && t <= 7) continue;
+    if (hand.filter((x) => x === t).length >= 4) continue;
+    if (isWinningHand([...hand, t])) waits.push(t);
+  }
+  return waits;
+}
+function isLegalRiichiAnkan(state, tile) {
+  const player = state.players[state.currentPlayer];
+  if (!player.riichi || state.lastDrawnTile !== tile) return false;
+  if (player.hand.filter((t) => t === tile).length !== 4) return false;
+  const before = [...player.hand];
+  before.splice(before.lastIndexOf(tile), 1);
+  const after = player.hand.filter((t) => t !== tile);
+  return waitsOf(before, state.playerCount).join(",") === waitsOf(after, state.playerCount).join(",");
+}
+function discardVariants(player, kind, tile) {
+  const hasAka = (player.akaInHand ?? []).includes(tile);
+  if (!hasAka) return [{ kind, tile }];
+  const copies = player.hand.filter((t) => t === tile).length;
+  if (copies > 1) return [
+    { kind, tile, aka: false },
+    { kind, tile, aka: true }
+  ];
+  return [{ kind, tile, aka: true }];
+}
 function getValidActions(state) {
   const actions = [];
   switch (state.phase) {
@@ -1074,11 +1138,11 @@ function getValidActions(state) {
     }
     case "discard": {
       const player = state.players[state.currentPlayer];
-      const uniqueTiles = [...new Set(player.hand)];
+      const uniqueTiles = player.riichi && state.lastDrawnTile != null ? [state.lastDrawnTile] : [...new Set(player.hand)];
       const forbidden = new Set(state.kuikae ?? []);
       for (const t of uniqueTiles) {
         if (!forbidden.has(t)) {
-          actions.push({ kind: ActionKind.Discard, tile: t });
+          actions.push(...discardVariants(player, ActionKind.Discard, t));
         }
       }
       if (isWinningHand(player.hand) && state.lastDrawnTile !== null && previewWin(state, state.currentPlayer, true, state.lastDrawnTile)) {
@@ -1090,18 +1154,20 @@ function getValidActions(state) {
           const idx = remaining.indexOf(t);
           remaining.splice(idx, 1);
           if (calculateShanten(remaining, player.melds.length) === 0) {
-            actions.push({ kind: ActionKind.Riichi, tile: t });
+            actions.push(...discardVariants(player, ActionKind.Riichi, t));
           }
         }
       }
       for (const t of uniqueTiles) {
-        if (player.hand.filter((x) => x === t).length === 4) {
+        if (player.hand.filter((x) => x === t).length === 4 && (!player.riichi || isLegalRiichiAnkan(state, t))) {
           actions.push({ kind: ActionKind.Ankan, tile: t });
         }
       }
-      for (const meld of player.melds) {
-        if (meld.type === "pon" && player.hand.includes(meld.tiles[0])) {
-          actions.push({ kind: ActionKind.Kakan, tile: meld.tiles[0] });
+      if (!player.riichi) {
+        for (const meld of player.melds) {
+          if (meld.type === "pon" && player.hand.includes(meld.tiles[0])) {
+            actions.push({ kind: ActionKind.Kakan, tile: meld.tiles[0] });
+          }
         }
       }
       const myFirstDraw = player.discards.length === 0;
@@ -1114,7 +1180,7 @@ function getValidActions(state) {
           actions.push({ kind: ActionKind.Kyushukyuhai });
         }
       }
-      if (state.playerCount === 3 && player.hand.includes(30)) {
+      if (state.playerCount === 3 && state.lastDrawnTile != null && player.hand.includes(30) && (!player.riichi || state.lastDrawnTile === 30)) {
         actions.push({ kind: ActionKind.Kita });
       }
       break;
@@ -1309,9 +1375,13 @@ function applyAction(state, action) {
     case ActionKind.Daiminkan:
       return applyDaiminkan(state, action);
     case ActionKind.Kyushukyuhai:
-      return applyRyukyokuTenpaiPayments({ ...state, phase: "ryukyoku" });
+      return { ...state, phase: "ryukyoku", ryukyokuReason: "kyushukyuhai" };
     case ActionKind.Kita:
-      return { ...state, phase: "kita_declare" };
+      return {
+        ...state,
+        players: state.players.map((p) => ({ ...p, ippatsuEligible: false })),
+        phase: "kita_declare"
+      };
     default:
       console.warn(`engine: applyAction \u2014 unknown action kind: ${action.kind}`);
       return state;
@@ -1323,21 +1393,16 @@ function applyPass(state) {
   }
   if (state.phase === "respond") {
     if (state.chankan) {
-      return {
-        ...state,
-        phase: "discard",
-        currentPlayer: state.chankan.kaker,
-        chankan: null
-      };
+      return completeKakanDraw(state);
     }
     if (isSuuKaiKan(state.players)) {
-      return applyRyukyokuTenpaiPayments({ ...state, phase: "ryukyoku" });
+      return { ...state, phase: "ryukyoku", ryukyokuReason: "suukaikan" };
     }
     if (isSuuFuuRenda(state)) {
-      return applyRyukyokuTenpaiPayments({ ...state, phase: "ryukyoku" });
+      return { ...state, phase: "ryukyoku", ryukyokuReason: "suufonrenda" };
     }
     if (state.sanwahou && isSanwahou(state)) {
-      return applyRyukyokuTenpaiPayments({ ...state, phase: "ryukyoku" });
+      return { ...state, phase: "ryukyoku", ryukyokuReason: "sanwahou" };
     }
     const nextPlayer = (state.lastDiscardPlayer + 1) % state.playerCount;
     return advanceToDraw(state, nextPlayer);
@@ -1356,10 +1421,10 @@ function resolveKita(state) {
     const idx = hand.indexOf(30);
     if (idx !== -1) hand.splice(idx, 1);
     return { ...p, hand, kitaCount: p.kitaCount + 1 };
-  });
+  }).map((p) => ({ ...p, ippatsuEligible: false }));
   const wall = getWall({ ...state, players });
   const result = drawRinshan(wall);
-  if (!result) return applyRyukyokuTenpaiPayments({ ...state, players, phase: "ryukyoku" });
+  if (!result) return applyRyukyokuTenpaiPayments({ ...state, players, phase: "ryukyoku", ryukyokuReason: "exhaustive" });
   const playersWithDraw = players.map((p, i) => {
     if (i !== player) return p;
     return {
@@ -1378,6 +1443,7 @@ function resolveKita(state) {
     // Nuki draws a dead-wall replacement but does not reveal kan dora.
     doraMarkers: state.doraMarkers,
     lastDrawnTile: result.tile,
+    lastDrawnAka: result.aka,
     phase: result.tile === 30 ? "kita_declare" : "discard"
   };
   return newState;
@@ -1385,7 +1451,7 @@ function resolveKita(state) {
 function advanceToDraw(state, player) {
   const wall = getWall(state);
   const result = drawTile(wall);
-  if (!result) return applyRyukyokuTenpaiPayments({ ...state, phase: "ryukyoku" });
+  if (!result) return applyRyukyokuTenpaiPayments({ ...state, phase: "ryukyoku", ryukyokuReason: "exhaustive" });
   const players = state.players.map((p, i) => {
     if (i !== player) return p;
     return {
@@ -1408,7 +1474,8 @@ function advanceToDraw(state, player) {
     turnCount: state.turnCount + 1,
     lastDiscard: null,
     lastDiscardPlayer: null,
-    lastDrawnTile: result.tile
+    lastDrawnTile: result.tile,
+    lastDrawnAka: result.aka
   };
 }
 function applyDiscard(state, action) {
@@ -1421,9 +1488,23 @@ function applyDiscard(state, action) {
     const withDiscard = {
       ...p,
       hand,
-      discards: [...p.discards, { tile: action.tile, tsumogiri }]
+      discards: [...p.discards, {
+        tile: action.tile,
+        tsumogiri,
+        riichi: p.riichi && p.riichiTurn === state.turnCount
+      }],
+      // The declaration discard itself keeps ippatsu alive. It expires on
+      // this player's next discard if nobody called in between.
+      ippatsuEligible: p.ippatsuEligible && p.riichiTurn < state.turnCount ? false : p.ippatsuEligible,
+      nagashiEligible: p.nagashiEligible !== false && (action.tile >= 27 || [0, 8, 9, 17, 18, 26].includes(action.tile))
     };
-    return discardAkaTransition(withDiscard, action.tile, hand).player;
+    const transitioned = discardAkaTransition(withDiscard, action.tile, hand, action.aka === true);
+    const discards = [...transitioned.player.discards];
+    discards[discards.length - 1] = {
+      ...discards[discards.length - 1],
+      aka: transitioned.akaDiscarded
+    };
+    return { ...transitioned.player, discards };
   });
   return {
     ...state,
@@ -1473,7 +1554,16 @@ function applyTsumo(state) {
   const isDealerWin = winner === state.dealer;
   const honbaPay = HONBA_TSUMO * state.honba;
   const newScores = state.players.map((p) => p.score);
-  const pao = state.paoTarget != null && evalResult.isYakuman ? state.paoTarget : null;
+  const hasPaoYaku = evalResult.yakuList.some((y) => y.name === "daisangen" || y.name === "daisuushii");
+  const pao = state.paoTarget != null && hasPaoYaku ? state.paoTarget : null;
+  const paoScore = pao == null ? null : calculatePoints({
+    han: 13,
+    fu: 0,
+    isDealer: isDealerWin,
+    isTsumo: true,
+    playerCount: state.playerCount
+  });
+  let paoCharge = 0;
   let totalCollected = 0;
   for (let i = 0; i < state.playerCount; i++) {
     if (i === winner) continue;
@@ -1483,18 +1573,20 @@ function applyTsumo(state) {
     } else {
       pay = i === state.dealer ? evalResult.scoreResult.tsumoDealerPays : evalResult.scoreResult.tsumoChild;
     }
+    const basePay = pay;
     pay += honbaPay;
     if (pao != null) {
-      if (i === pao) {
-        totalCollected += pay;
-      }
+      const paoShare = isDealerWin ? paoScore.tsumoDealer : i === state.dealer ? paoScore.tsumoDealerPays : paoScore.tsumoChild;
+      newScores[i] -= basePay - paoShare;
+      paoCharge += paoShare + honbaPay;
+      totalCollected += pay;
     } else {
       newScores[i] -= pay;
       totalCollected += pay;
     }
   }
   if (pao != null) {
-    newScores[pao] -= totalCollected;
+    newScores[pao] -= paoCharge;
   }
   newScores[winner] += totalCollected + state.kyotaku * KYOTAKU_VALUE;
   const newPlayers = state.players.map((p, i) => ({
@@ -1531,12 +1623,20 @@ function applyRon(state, action) {
     return state;
   }
   const honbaPay = HONBA_RON * state.honba;
-  const pao = state.paoTarget != null && evalResult.isYakuman ? state.paoTarget : null;
+  const hasPaoYaku = evalResult.yakuList.some((y) => y.name === "daisangen" || y.name === "daisuushii");
+  const pao = state.paoTarget != null && hasPaoYaku ? state.paoTarget : null;
   const newScores = state.players.map((p) => p.score);
   if (pao != null) {
-    const halfBase = Math.floor(evalResult.scoreResult.ronPayment / 2);
-    newScores[pao] -= evalResult.scoreResult.ronPayment - halfBase + honbaPay;
-    newScores[loser] -= halfBase;
+    const paoPayment = calculatePoints({
+      han: 13,
+      fu: 0,
+      isDealer: winner === state.dealer,
+      isTsumo: false,
+      playerCount: state.playerCount
+    }).ronPayment;
+    const paoShare = Math.floor(paoPayment / 2);
+    newScores[pao] -= paoPayment - paoShare + honbaPay;
+    newScores[loser] -= evalResult.scoreResult.ronPayment - (paoPayment - paoShare);
   } else {
     const totalFromLoser = evalResult.scoreResult.ronPayment + honbaPay;
     newScores[loser] -= totalFromLoser;
@@ -1580,12 +1680,12 @@ function applyPon(state, action) {
           isMenzen: false
         };
         return meldAkaTransition(withMeld, consumed, hand);
-      });
+      }).map((pl) => ({ ...pl, ippatsuEligible: false }));
       const discarderPlayers = players.map((pl, i) => {
         if (i !== discardedBy) return pl;
         const discards = [...pl.discards];
         discards.pop();
-        return { ...pl, discards };
+        return { ...pl, discards, nagashiEligible: false };
       });
       const paoTarget = state.paoTarget ?? checkPao(discarderPlayers, p, action.called, discardedBy);
       return {
@@ -1596,6 +1696,7 @@ function applyPon(state, action) {
         lastDiscard: null,
         lastDiscardPlayer: null,
         lastDrawnTile: null,
+        lastDrawnAka: false,
         paoTarget,
         kuikae: [action.called]
       };
@@ -1650,13 +1751,13 @@ function applyChi(state, action) {
       }
     }
     return result;
-  });
+  }).map((p) => ({ ...p, ippatsuEligible: false }));
   const discardedBy = state.lastDiscardPlayer;
   const fixedPlayers = players.map((pl, i) => {
     if (i !== discardedBy) return pl;
     const discards = [...pl.discards];
     discards.pop();
-    return { ...pl, discards };
+    return { ...pl, discards, nagashiEligible: false };
   });
   return {
     ...state,
@@ -1666,11 +1767,12 @@ function applyChi(state, action) {
     lastDiscard: null,
     lastDiscardPlayer: null,
     lastDrawnTile: null,
+    lastDrawnAka: false,
     kuikae: chiKuikae(action.tiles, action.called)
   };
 }
 function applyRiichi(state, action) {
-  const daburiiEligible = state.turnCount <= state.playerCount && state.players.every((p) => p.melds.length === 0);
+  const daburiiEligible = state.turnCount <= state.playerCount && state.players.every((p) => p.melds.length === 0) && (state.playerCount !== 3 || state.players.every((p) => p.kitaCount === 0));
   const players = state.players.map((p, i) => {
     if (i !== state.currentPlayer) return p;
     return {
@@ -1678,14 +1780,15 @@ function applyRiichi(state, action) {
       riichi: true,
       riichiTurn: state.turnCount,
       score: p.score - 1e3,
-      daburii: daburiiEligible
+      daburii: daburiiEligible,
+      ippatsuEligible: true
     };
   });
   const declarer = players[state.currentPlayer];
   if (declarer.score < 0) {
     return finalizeGame({ ...state, players, kyotaku: state.kyotaku + 1 });
   }
-  const discardState = applyDiscard({ ...state, players }, { tile: action.tile });
+  const discardState = applyDiscard({ ...state, players }, action);
   return { ...discardState, kyotaku: state.kyotaku + 1 };
 }
 function applyAnkan(state, action) {
@@ -1708,7 +1811,7 @@ function applyAnkan(state, action) {
       akaInHand: (p.akaInHand ?? []).filter((t) => t !== action.tile),
       akaInMelds: hadAkaOfTile ? [...p.akaInMelds ?? [], action.tile] : p.akaInMelds ?? []
     };
-  });
+  }).map((p) => ({ ...p, ippatsuEligible: false }));
   const wall = getWall({ ...state, players });
   const result = drawRinshan(wall);
   if (!result) return { ...state, players, phase: "ryukyoku" };
@@ -1730,6 +1833,7 @@ function applyAnkan(state, action) {
     doraMarkers: getDoraMarkers(result.wall),
     phase: "discard",
     lastDrawnTile: result.tile,
+    lastDrawnAka: result.aka,
     atRinshan: true
   };
 }
@@ -1744,34 +1848,41 @@ function applyKakan(state, action) {
     );
     const withMeld = { ...p, hand, melds };
     return meldAkaTransition(withMeld, [action.tile], hand);
-  });
-  const wall = getWall({ ...state, players });
+  }).map((p) => ({ ...p, ippatsuEligible: false }));
+  return {
+    ...state,
+    players,
+    // Open the chankan window before touching the dead wall.
+    phase: "respond",
+    chankan: { tile: action.tile, kaker: state.currentPlayer },
+    lastDrawnTile: null,
+    lastDrawnAka: false,
+    atRinshan: false
+  };
+}
+function completeKakanDraw(state) {
+  const kaker = state.chankan.kaker;
+  const wall = getWall(state);
   const result = drawRinshan(wall);
-  if (!result) return { ...state, players, phase: "ryukyoku" };
-  const playersWithDraw = players.map((p, i) => {
-    if (i !== state.currentPlayer) return p;
-    return {
-      ...p,
-      hand: [...p.hand, result.tile].sort((a, b) => a - b),
-      akaInHand: result.aka ? [...p.akaInHand ?? [], result.tile] : p.akaInHand ?? [],
-      akaCount: (p.akaInHand?.length ?? 0) + (result.aka ? 1 : 0) + (p.akaInMelds?.length ?? 0)
-    };
+  if (!result) return { ...state, chankan: null, phase: "ryukyoku" };
+  const players = state.players.map((p, i) => i !== kaker ? p : {
+    ...p,
+    hand: [...p.hand, result.tile].sort((a, b) => a - b),
+    akaInHand: result.aka ? [...p.akaInHand ?? [], result.tile] : p.akaInHand ?? [],
+    akaCount: (p.akaInHand?.length ?? 0) + (result.aka ? 1 : 0) + (p.akaInMelds?.length ?? 0)
   });
   return {
     ...state,
-    players: playersWithDraw,
+    players,
+    currentPlayer: kaker,
     wall: result.wall.tiles,
     wallIndex: result.wall.drawIndex,
     rinshanIndex: result.wall.rinshanIndex,
     doraMarkers: getDoraMarkers(result.wall),
-    // Open the chankan window. Respond machinery uses state.chankan (set
-    // here) to know we're in robbing-the-kan mode, where only Ron is a
-    // legal response and the called tile is `action.tile` (not the stale
-    // lastDiscard). applyPass in chankan mode returns to the kaker's
-    // discard phase without advancing the wall.
-    phase: "respond",
-    chankan: { tile: action.tile, kaker: state.currentPlayer },
+    chankan: null,
+    phase: "discard",
     lastDrawnTile: result.tile,
+    lastDrawnAka: result.aka,
     atRinshan: true
   };
 }
@@ -1800,11 +1911,17 @@ function applyDaiminkan(state, action) {
           isMenzen: false
         };
         return meldAkaTransition(withMeld, consumed, hand);
+      }).map((pl) => ({ ...pl, ippatsuEligible: false }));
+      const fixedPlayers = players.map((pl, i) => {
+        if (i !== discardedBy) return pl;
+        const discards = [...pl.discards];
+        discards.pop();
+        return { ...pl, discards, nagashiEligible: false };
       });
-      const wall = getWall({ ...state, players, currentPlayer: p });
+      const wall = getWall({ ...state, players: fixedPlayers, currentPlayer: p });
       const result = drawRinshan(wall);
-      if (!result) return { ...state, players, phase: "ryukyoku" };
-      const playersWithDraw = players.map((pl, i) => {
+      if (!result) return { ...state, players: fixedPlayers, phase: "ryukyoku" };
+      const playersWithDraw = fixedPlayers.map((pl, i) => {
         if (i !== p) return pl;
         return {
           ...pl,
@@ -1826,6 +1943,7 @@ function applyDaiminkan(state, action) {
         lastDiscard: null,
         lastDiscardPlayer: null,
         lastDrawnTile: result.tile,
+        lastDrawnAka: result.aka,
         atRinshan: true,
         paoTarget
       };
@@ -1869,29 +1987,42 @@ function nextRound(state) {
   if (checkTobi(state)) {
     return finalizeGame(state);
   }
+  const targetScore = state.playerCount === 3 ? 4e4 : 3e4;
+  const topScore = Math.max(...state.players.map((p) => p.score));
+  const dealerIsTop = state.players[state.dealer].score === topScore;
+  const inFinalOrExtension = state.roundNumber >= state.endRound;
   const isDealerWin = (state.phase === "tsumo_win" || state.phase === "ron_win") && state.currentPlayer === state.dealer;
   if (isDealerWin) {
+    if (inFinalOrExtension && dealerIsTop && state.players[state.dealer].score >= targetScore) {
+      return finalizeGame(state);
+    }
     return newRound(state, state.dealer, state.roundNumber, state.roundWind, state.honba + 1);
   }
   if (state.phase === "ryukyoku") {
+    if (state.ryukyokuReason && state.ryukyokuReason !== "exhaustive") {
+      return newRound(state, state.dealer, state.roundNumber, state.roundWind, state.honba + 1);
+    }
     const dealerTenpai = isPlayerTenpai(state.players[state.dealer]);
     if (dealerTenpai) {
+      if (inFinalOrExtension && dealerIsTop && state.players[state.dealer].score >= targetScore) {
+        return finalizeGame(state);
+      }
       return newRound(state, state.dealer, state.roundNumber, state.roundWind, state.honba + 1);
     }
     const newDealer2 = (state.dealer + 1) % state.playerCount;
     const newRoundNumber2 = state.roundNumber + 1;
-    let newRoundWind2 = state.roundWind;
     const eastRounds2 = state.playerCount === 3 ? 3 : 4;
-    if (newRoundNumber2 === eastRounds2 + 1) newRoundWind2 = 1;
-    if (newRoundNumber2 > state.endRound) return finalizeGame(state);
+    const maxRound2 = state.endRound + state.playerCount;
+    if (newRoundNumber2 > state.endRound && (topScore >= targetScore || newRoundNumber2 > maxRound2)) return finalizeGame(state);
+    const newRoundWind2 = Math.floor((newRoundNumber2 - 1) / eastRounds2);
     return newRound(state, newDealer2, newRoundNumber2, newRoundWind2, state.honba + 1);
   }
   const newDealer = (state.dealer + 1) % state.playerCount;
-  let newRoundNumber = state.roundNumber + 1;
-  let newRoundWind = state.roundWind;
+  const newRoundNumber = state.roundNumber + 1;
   const eastRounds = state.playerCount === 3 ? 3 : 4;
-  if (newRoundNumber === eastRounds + 1) newRoundWind = 1;
-  if (newRoundNumber > state.endRound) return finalizeGame(state);
+  const maxRound = state.endRound + state.playerCount;
+  if (newRoundNumber > state.endRound && (topScore >= targetScore || newRoundNumber > maxRound)) return finalizeGame(state);
+  const newRoundWind = Math.floor((newRoundNumber - 1) / eastRounds);
   return newRound(state, newDealer, newRoundNumber, newRoundWind, 0);
 }
 function newRound(state, dealer, roundNumber, roundWind, honba) {
@@ -1908,7 +2039,10 @@ function newRound(state, dealer, roundNumber, roundWind, honba) {
     kitaCount: 0,
     akaCount: akaInHand[idx].length,
     akaInHand: akaInHand[idx].slice(),
-    akaInMelds: []
+    akaInMelds: [],
+    daburii: false,
+    ippatsuEligible: false,
+    nagashiEligible: true
   });
   return {
     playerCount: state.playerCount,
@@ -1930,10 +2064,12 @@ function newRound(state, dealer, roundNumber, roundWind, honba) {
     lastDiscard: null,
     lastDiscardPlayer: null,
     lastDrawnTile: null,
+    lastDrawnAka: false,
     ippatsu: false,
     koyakuMode: state.koyakuMode,
     sanwahou: state.sanwahou,
-    paoTarget: null
+    paoTarget: null,
+    ryukyokuReason: void 0
   };
 }
 export {
@@ -1955,6 +2091,7 @@ export {
   evaluateYaku,
   finalRanking,
   getDoraMarkers,
+  getUraDoraMarkers,
   getValidActions,
   isPermanentFuriten,
   isWinningHand,

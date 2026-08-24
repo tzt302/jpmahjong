@@ -3,7 +3,7 @@ import { evaluateYaku, evaluateYakuForDecomp, type YakuEntry, type YakuContext, 
 import { basicPoints, calculateFu, calculatePoints, type ScoreResult } from './scoring'
 import { decomposeAllWinningHands, type HandDecomposition } from './hand-analysis'
 import { doraFromIndicator } from './tile-utils'
-import { remainingTiles } from './wall'
+import { getUraDoraMarkers, remainingTiles } from './wall'
 
 /**
  * Result of evaluating a complete winning hand: yaku list, dora count,
@@ -15,7 +15,7 @@ export interface WinEvaluation {
   yakuList: YakuEntry[]
   /** Han from yaku only (excludes dora). */
   yakuHan: number
-  /** Dora indicator dora + uradora (none yet) + sanma kita (1 per kita,
+  /** Visible dora + uradora + aka dora + sanma kita (1 per kita,
    *  +1 again per kita if any dora indicator points to North). */
   doraCount: number
   /** yakuHan + doraCount. */
@@ -73,7 +73,7 @@ function buildYakuContext(
     seatWind,
     isTsumo,
     isRiichi: player.riichi,
-    isIppatsu: state.ippatsu && player.riichi,
+    isIppatsu: player.ippatsuEligible === true && player.riichi,
     // Rinshan kaihou: the winning tsumo was a rinshan draw (state.atRinshan
     // set true by applyAnkan/Kakan/Daiminkan, cleared on discard).
     isRinshan: isTsumo && state.atRinshan === true,
@@ -88,10 +88,12 @@ function buildYakuContext(
     isHaitei: isTsumo && state.atRinshan !== true && remainingTiles({
       tiles: state.wall, drawIndex: state.wallIndex,
       rinshanIndex: state.rinshanIndex, doraCount: state.doraMarkers.length,
+      akaPositions: state.akaPositions ?? new Set<number>(), playerCount: state.playerCount,
     }) === 0,
     isHoutei: !isTsumo && !state.chankan && remainingTiles({
       tiles: state.wall, drawIndex: state.wallIndex,
       rinshanIndex: state.rinshanIndex, doraCount: state.doraMarkers.length,
+      akaPositions: state.akaPositions ?? new Set<number>(), playerCount: state.playerCount,
     }) === 0,
     // First turn = before any player has called/discarded a 2nd time.
     // Conservative: require turnCount <= playerCount AND all players still
@@ -101,7 +103,7 @@ function buildYakuContext(
     // this, daburi could falsely fire if an opponent kita'd then a player
     // declared riichi on turn 1.
     isFirstTurn: state.turnCount <= state.playerCount
-      && state.players.every(p => p.isMenzen)
+      && state.players.every(p => p.melds.length === 0)
       && (state.playerCount !== 3 || state.players.every(p => p.kitaCount === 0)),
     winningTile,
     koyakuMode: state.koyakuMode,
@@ -112,10 +114,11 @@ function buildYakuContext(
  * Count dora in the (full 14-tile) winning hand including melds. Each copy
  * of a dora tile counts once.
  *
+ * Riichi wins also reveal one ura indicator for every visible indicator.
  * In sanma the player's kitaCount adds 1 dora per kita declared. If a dora
  * indicator points to North (i.e. the dora itself is 北 = tile index 30),
  * each kita counts as 2 dora total (the kita's own dora + the indicator
- * matching it). Aka dora is not implemented.
+ * matching it).
  */
 function countDora(
   state: GameState,
@@ -146,10 +149,22 @@ function countDora(
     }
   }
 
-  // Aka-dora: +1 han per red-5 tile owned by the winner. The engine's
-  // own wall doesn't currently flag aka tiles, so player.akaCount stays
-  // 0 in self-play. External replays (mjai logs with `5mr`/`5pr`/`5sr`)
-  // populate this field via the replay bridge.
+  if (player.riichi) {
+    const uraMarkers = getUraDoraMarkers({
+      tiles: state.wall,
+      drawIndex: state.wallIndex,
+      rinshanIndex: state.rinshanIndex,
+      doraCount: state.doraMarkers.length,
+      akaPositions: state.akaPositions ?? new Set<number>(),
+      playerCount: state.playerCount,
+    })
+    for (const indicator of uraMarkers) {
+      const doraTile = doraFromIndicator(indicator, isSanma)
+      for (const t of allTiles) if (t === doraTile) count++
+    }
+  }
+
+  // Aka-dora: +1 han per red-5 tile owned by the winner.
   if (player.akaCount && player.akaCount > 0) {
     count += player.akaCount
   }
@@ -252,7 +267,7 @@ export function evaluateWin(
     winner,
     yakuList: bestYaku.yaku,
     yakuHan: bestYaku.totalHan,
-    doraCount: hasYaku ? doraCount : 0,
+    doraCount: hasYaku && !bestYaku.isYakuman ? doraCount : 0,
     totalHan: hasYaku ? bestTotalHan : 0,
     fu: hasYaku ? bestFu : 30,
     scoreResult: bestScore ?? fallbackScore,

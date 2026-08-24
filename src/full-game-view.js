@@ -98,10 +98,17 @@ function sanmaTableSnapshot(session) {
   const hand = handPlayer.hand.map(tile => {
     const red = (akaLeft.get(tile) || 0) > 0;
     if (red) akaLeft.set(tile, akaLeft.get(tile) - 1);
-    return { code: String(tile), tile, red, drawn: false };
+    return { code: `${tile}${red ? 'r' : ''}`, tile, red, drawn: false };
   });
   if (state.lastDrawnTile != null && state.currentPlayer === 0 && ['discard', 'kita_declare'].includes(state.phase)) {
-    const index = hand.map(item => item.tile).lastIndexOf(state.lastDrawnTile);
+    let index = -1;
+    for (let i = hand.length - 1; i >= 0; i -= 1) {
+      if (hand[i].tile === state.lastDrawnTile && hand[i].red === Boolean(state.lastDrawnAka)) {
+        index = i;
+        break;
+      }
+    }
+    if (index < 0) index = hand.map(item => item.tile).lastIndexOf(state.lastDrawnTile);
     if (index >= 0) {
       const [drawn] = hand.splice(index, 1);
       hand.push({ ...drawn, drawn: true });
@@ -117,18 +124,31 @@ function sanmaTableSnapshot(session) {
       human: playerId === 0,
       score: player.score,
       kitaCount: player.kitaCount,
-      river: player.discards.map(discard => ({ tile: discard.tile, code: String(discard.tile), riichi: false, claimed: false })),
-      melds: player.melds.map(meld => ({ code: `${meld.type}:${meld.tiles[0]}`, tiles: meld.tiles.map(tile => ({ code: String(tile), tile, red: false })) }))
+      river: player.discards.map(discard => ({ tile: discard.tile, code: String(discard.tile), red: Boolean(discard.aka), riichi: Boolean(discard.riichi), claimed: false })),
+      melds: player.melds.map(meld => {
+        const redLeft = new Map();
+        for (const tile of player.akaInMelds || []) redLeft.set(tile, (redLeft.get(tile) || 0) + 1);
+        return {
+          code: `${meld.type}:${meld.tiles[0]}`,
+          tiles: meld.tiles.map(tile => {
+            const red = (redLeft.get(tile) || 0) > 0;
+            if (red) redLeft.set(tile, redLeft.get(tile) - 1);
+            return { code: `${tile}${red ? 'r' : ''}`, tile, red };
+          })
+        };
+      })
     };
   });
   const handNumber = (state.roundNumber - 1) % 3 + 1;
+  const usedReplacements = state.wall.length - 1 - state.rinshanIndex;
+  const wallRemaining = Math.max(0, state.wall.length - 18 - usedReplacements - state.wallIndex);
   return {
     roundWind: state.roundWind,
     handNumber,
     roundLabel: `${WIND_LABELS[state.roundWind]}${handNumber}局`,
     honba: state.honba,
     riichiSticks: state.kyotaku,
-    wallRemaining: Math.max(0, state.rinshanIndex - 13 - state.wallIndex),
+    wallRemaining,
     doraIndicators: state.doraMarkers.map(tile => ({ code: String(tile), tile })),
     currentPosition: state.currentPlayer,
     humanWind: (3 - state.dealer) % 3,

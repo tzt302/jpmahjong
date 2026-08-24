@@ -6,7 +6,13 @@ const TILE_ASSETS = [
   'Ton.svg','Nan.svg','Shaa.svg','Pei.svg','Haku.svg','Hatsu.svg','Chun.svg'
 ];
 
-export function tileFaceMarkup(tile) {
-  const file = TILE_ASSETS[tile];
+const RED_TILE_ASSETS = {
+  4: 'Man5-Dora.svg',
+  13: 'Pin5-Dora.svg',
+  22: 'Sou5-Dora.svg'
+};
+
+export function tileFaceMarkup(tile, red = false) {
+  const file = red && RED_TILE_ASSETS[tile] ? RED_TILE_ASSETS[tile] : TILE_ASSETS[tile];
   return `<img class="tile-face-image" src="assets/tiles/regular/${file}" alt="" draggable="false">`;
 }
