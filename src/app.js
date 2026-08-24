@@ -305,7 +305,7 @@ function handleDecision(decision) {
   if (decision.kind === 'round-result') {
     if (decision.options.hule) showHuleResult(decision.options.hule);
     else if (decision.options.sanmaResult) showSanmaResult(decision.options.sanmaResult);
-    else showResult(decision.options.pingju.name || '荒牌流局', '听牌罚符、本场与供托已由完整规则核心结算。');
+    else showPingjuResult(decision.options.pingju);
   }
   else if (decision.kind === 'match-result') {
     const scores = decision.payload.defen || decision.options.ranking?.map(item => item.score) || [];
@@ -336,6 +336,11 @@ function sanmaSeatLabel(player) {
 }
 
 function sanmaPaymentText(result, winner) {
+  if (result.type === 'nagashi') {
+    const honba = game.state.honba * 100;
+    if (winner.winner === game.state.dealer) return `流局满贯 每家 ${(4000 + honba).toLocaleString('zh-CN')}点`;
+    return `流局满贯 庄家 ${(4000 + honba).toLocaleString('zh-CN')}点／子家 ${(2000 + honba).toLocaleString('zh-CN')}点`;
+  }
   if (result.type === 'ron' && winner.payment) return `荣和 ${winner.payment.toLocaleString('zh-CN')}点`;
   if (result.type !== 'tsumo' || !winner.scoreResult) return '';
   const honba = game.state.honba * 100;
@@ -379,13 +384,32 @@ function sanmaResultGroup(result, winner) {
   if (!winner.doraBreakdown && winner.doraCount) items.push({ name: '宝牌', value: `${winner.doraCount}番` });
   return {
     heading: `${sanmaSeatLabel(winner.winner)} · ${result.type === 'tsumo' ? '自摸' : result.type === 'ron' ? '荣和' : '流局满贯'}`,
-    summary: winner.isYakuman
+    summary: result.type === 'nagashi' ? '满贯' : winner.isYakuman
       ? (Number(winner.totalHan) >= 26 ? `${Math.floor(winner.totalHan / 13)}倍役满` : '役满')
       : `${winner.fu || 0}符 · ${winner.totalHan || winner.han || 0}番`,
     payment: sanmaPaymentText(result, winner),
     tile: resultTile(winner.winningTile),
     items
   };
+}
+
+function showPingjuResult(result = {}) {
+  if (result.name === '流し満貫') {
+    const gains = result.fenpei || [];
+    let winners = gains.map((gain, seat) => ({ gain, seat })).filter(item => item.gain > 0);
+    if (!winners.length && gains.length) winners = gains.map((gain, seat) => ({ gain, seat }));
+    const groups = winners.map(({ gain, seat }) => ({
+      heading: `${WIND_LABELS[seat]}家 · 流局满贯`,
+      summary: '满贯',
+      payment: `点数变化 ${gain >= 0 ? '+' : ''}${Number(gain).toLocaleString('zh-CN')}点`,
+      tile: null,
+      items: [{ name: '流局满贯', value: '满贯' }]
+    }));
+    showResult('流局满贯', winners.length > 1 ? '多家流局满贯分别结算' : '幺九牌弃牌未被鸣牌，按满贯结算', groups);
+    return;
+  }
+  const title = result.name === '荒牌平局' ? '荒牌流局' : (result.name || '荒牌流局');
+  showResult(title, '听牌罚符、本场与供托已由完整规则核心结算。');
 }
 
 function showSanmaResult(result) {

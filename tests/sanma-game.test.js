@@ -407,6 +407,7 @@ test('kita is blocked immediately after pon and riichi may extract only a drawn 
 
 test('nagashi mangan replaces noten payments at exhaustive draw', () => {
   const session = new SanmaGameSession({ speed: 0 });
+  const winnerIsDealer = session.state.dealer === 0;
   session.state = {
     ...session.state,
     phase: 'draw',
@@ -419,8 +420,9 @@ test('nagashi mangan replaces noten payments at exhaustive draw', () => {
   };
   session.advance();
   assert.equal(session.lastResult.type, 'nagashi');
+  assert.equal(session.lastResult.winners[0].han, 5);
   assert.equal(session.state.phase, 'tsumo_win');
-  assert.ok(session.state.players[0].score > 35000);
+  assert.equal(session.state.players[0].score, 35000 + (winnerIsDealer ? 8000 : 6000));
   session.stop();
 });
 
